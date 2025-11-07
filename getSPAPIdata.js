@@ -344,18 +344,24 @@ function deleteOrderNumber() {
 
 class InventorySummariesDownloader extends Downloader {
   /**
-   * 全ての在庫サマリーを取得（SKU指定なし）
+   * 在庫サマリーを取得
+   * @param {Date} startDateTime - この日時以降に更新された在庫のみ取得（省略可）
    * @returns {Array} 在庫サマリーデータの配列
    */
-  getAllInventorySummaries() {
+  getAllInventorySummaries(startDateTime) {
     let allInventories = [];
     
-    // 初回リクエスト（SKU指定なしで全在庫を取得）
+    // クエリパラメータの構築
     let queryParams = [
       this.marketplaceIDs,
       "granularityType=Marketplace",
       "granularityId=A1VC38T7YXB528"
     ];
+    
+    // startDateTimeが指定されている場合は追加
+    if (startDateTime) {
+      queryParams.push("startDateTime=" + startDateTime.toISOString());
+    }
     
     this.setQueryParams(queryParams);
     let data = this.getData();
@@ -373,6 +379,12 @@ class InventorySummariesDownloader extends Downloader {
         "granularityId=A1VC38T7YXB528",
         "nextToken=" + encodeURIComponent(nextToken)
       ];
+      
+      // startDateTimeをnextTokenと一緒に使う
+      if (startDateTime) {
+        queryParams.push("startDateTime=" + startDateTime.toISOString());
+      }
+      
       this.setQueryParams(queryParams);
       data = this.getData();
       if (data.payload && data.payload.inventorySummaries) {
@@ -506,9 +518,15 @@ function updateInventoryStatus() {
   try {
     Logger.log('在庫状況の取得を開始します...');
     
-    // 1. 全ての在庫サマリーを取得（SKU指定なし）
+    // 1ヶ月前の日時を計算
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 1);
+    startDate.setHours(0, 0, 0, 0);
+    Logger.log(`${startDate.toISOString()} 以降に更新された在庫を取得します。`);
+    
+    // 1. 直近1ヶ月に更新された在庫サマリーを取得
     const inventoryDownloader = new InventorySummariesDownloader("/fba/inventory/v1/summaries");
-    const inventoryData = inventoryDownloader.getAllInventorySummaries();
+    const inventoryData = inventoryDownloader.getAllInventorySummaries(startDate);
     Logger.log(`${inventoryData.length}件の在庫データを取得しました。`);
     
     // 2. 納品状況シートに書き込み
