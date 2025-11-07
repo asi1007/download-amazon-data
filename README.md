@@ -8,6 +8,7 @@ Amazon Selling Partner API (SP-API) を使用して、売上データ、価格�
 - 📅 **週次売上集計**: 週次の売上データを集計してシートに保存
 - 💰 **価格情報取得**: 競合価格情報を取得して記録
 - 🔄 **トランザクションダウンロード**: 注文情報の詳細を取得
+- 📦 **在庫状況取得**: FBA在庫の納品状況を自動取得して「納品状況」シートに出力
 
 ## プロジェクト構成
 
@@ -50,6 +51,7 @@ Google Apps Scriptエディタから以下の関数を実行：
 - `updateYesterdaySalesNum()`: 昨日の売上データを更新
 - `updateLastWeekSalesNum()`: 先週の売上データを更新
 - `downloadPrices()`: 最新の価格情報を取得
+- `updateInventoryStatus()`: 在庫状況（納品状況）を更新
 
 ### トリガー設定
 
@@ -58,6 +60,29 @@ Google Apps Scriptエディタから以下の関数を実行：
 1. Google Apps Scriptエディタで「トリガー」を開く
 2. 「トリガーを追加」をクリック
 3. 実行する関数とスケジュールを設定
+
+### 在庫状況機能の詳細
+
+`updateInventoryStatus()` 関数は、以下の情報を「納品状況」シートに出力します：
+
+| 列 | フィールド名 | 説明 | 意味 |
+|---|---|---|---|
+| A | ASIN | 商品識別コード | |
+| B | SKU | 出品者SKU | |
+| C | 販売可能 | fulfillableQuantity | ✅ 出荷可能な在庫 |
+| D | 納品準備中 | inboundWorkingQuantity | 📦 納品プラン作成済・未出荷 |
+| E | 納品中 | inboundShippedQuantity | 🚚 FCへ輸送中 |
+| F | 受領中 | inboundReceivingQuantity | 🏭 FCで受領処理中 |
+| G | 予約済合計 | totalReservedQuantity | ⏳ 一時確保中の合計 |
+| H | 注文確保 | pendingCustomerOrderQuantity | 🛒 顧客注文分で確保 |
+| I | 転送中 | pendingTransshipmentQuantity | 🔄 FC間転送で確保 |
+| J | 処理中 | fcProcessingQuantity | 🧰 ピッキング・梱包中 |
+| K | 最終更新日時 | | データ取得日時 |
+
+**注意事項：**
+- データ取得には時間がかかる場合があります（商品数に応じて）
+- SP-APIのレート制限により、各リクエスト間に約4.5秒の待機時間があります
+- 「売上/日」シートに登録されているASINと同じリストを使用します
 
 ## テスト
 

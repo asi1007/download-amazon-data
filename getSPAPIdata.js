@@ -338,3 +338,232 @@ function deleteOrderNumber() {
   }
 }
 
+// =====================================
+// 在庫状況取得機能
+// =====================================
+
+class InventorySummariesDownloader extends Downloader {
+  /**
+   * SKUリストの在庫サマリーを取得
+   * @param {Array<string>} skus - SKUのリスト（最大50件）
+   * @returns {Object} 在庫サマリーデータ
+   */
+  getInventorySummaries(skus) {
+    // SP-APIは最大50件のSKUを一度に取得できる
+    const skuBatches = this.chunkArray(skus, 50);
+    let allInventories = [];
+    
+    for (let batch of skuBatches) {
+      let queryParams = [
+        this.marketplaceIDs,
+        "granularityType=Marketplace",
+        "granularityId=A1VC38T7YXB528"
+      ];
+      
+      // SKUをクエリパラメータに追加
+      batch.forEach(sku => {
+        queryParams.push("sellerSkus=" + encodeURIComponent(sku));
+      });
+      
+      this.setQueryParams(queryParams);
+      let data = this.getData();
+      
+      if (data.payload && data.payload.inventorySummaries) {
+        allInventories = allInventories.concat(data.payload.inventorySummaries);
+      }
+      
+      // nextTokenがある場合は次のページを取得
+      let nextToken = data.payload ? data.payload.nextToken : null;
+      while (nextToken) {
+        queryParams = [
+          this.marketplaceIDs,
+          "granularityType=Marketplace",
+          "granularityId=A1VC38T7YXB528",
+          "nextToken=" + encodeURIComponent(nextToken)
+        ];
+        this.setQueryParams(queryParams);
+        data = this.getData();
+        if (data.payload && data.payload.inventorySummaries) {
+          allInventories = allInventories.concat(data.payload.inventorySummaries);
+        }
+        nextToken = data.payload ? data.payload.nextToken : null;
+      }
+    }
+    
+    return allInventories;
+  }
+  
+  /**
+   * 配列を指定サイズのチャンクに分割
+   */
+  chunkArray(array, size) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
+}
+
+class InventorySheet {
+  constructor() {
+    const SHEET_ID = '1aAliE0u45YbMwcBMczrLrG82MRMjOVc999L3GWCUENE';
+    const SHEET_NAME = '納品状況';
+    this.spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    this.sheet = this.spreadsheet.getSheetByName(SHEET_NAME);
+    
+    // シートが存在しない場合は作成
+    if (!this.sheet) {
+      this.sheet = this.spreadsheet.insertSheet(SHEET_NAME);
+      this.initializeSheet();
+    }
+  }
+  
+  /**
+   * シートの初期化（ヘッダー行を設定）
+   */
+  initializeSheet() {
+    const headers = [
+      'ASIN',
+      'SKU',
+      '販売可能\n(fulfillableQuantity)',
+      '納品準備中\n(inboundWorkingQuantity)',
+      '納品中\n(inboundShippedQuantity)',
+      '受領中\n(inboundReceivingQuantity)',
+      '予約済合計\n(totalReservedQuantity)',
+      '注文確保\n(pendingCustomerOrderQuantity)',
+      '転送中\n(pendingTransshipmentQuantity)',
+      '処理中\n(fcProcessingQuantity)',
+      '最終更新日時'
+    ];
+    
+    this.sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // ヘッダー行のフォーマット設定
+    const headerRange = this.sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#4CAF50');
+    headerRange.setFontColor('#FFFFFF');
+    headerRange.setHorizontalAlignment('center');
+    headerRange.setVerticalAlignment('middle');
+    headerRange.setWrap(true);
+    
+    // 列幅の調整
+    this.sheet.setColumnWidth(1, 100); // ASIN
+    this.sheet.setColumnWidth(2, 150); // SKU
+    for (let i = 3; i <= 10; i++) {
+      this.sheet.setColumnWidth(i, 100);
+    }
+    this.sheet.setColumnWidth(11, 150); // 最終更新日時
+    
+    // 行の高さを調整
+    this.sheet.setRowHeight(1, 60);
+  }
+  
+  /**
+   * 在庫データをシートに書き込み
+   * @param {Array<Object>} inventoryData - 在庫データの配列
+   * @param {Object} skuToAsin - SKUからASINへのマッピング
+   */
+  writeInventoryData(inventoryData, skuToAsin) {
+    // 既存データをクリア（ヘッダー以外）
+    const lastRow = this.sheet.getLastRow();
+    if (lastRow > 1) {
+      this.sheet.getRange(2, 1, lastRow - 1, 11).clearContent();
+    }
+    
+    // データを整形
+    const rows = [];
+    const now = Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd HH:mm:ss");
+    
+    for (let inventory of inventoryData) {
+      const sku = inventory.sellerSku || '';
+      const asin = inventory.asin || skuToAsin[sku] || '';
+      
+      // reservedQuantityの各値を取得
+      const reserved = inventory.reservedQuantity || {};
+      
+      rows.push([
+        asin,
+        sku,
+        inventory.fulfillableQuantity || 0,
+        inventory.inboundWorkingQuantity || 0,
+        inventory.inboundShippedQuantity || 0,
+        inventory.inboundReceivingQuantity || 0,
+        reserved.totalReservedQuantity || 0,
+        reserved.pendingCustomerOrderQuantity || 0,
+        reserved.pendingTransshipmentQuantity || 0,
+        reserved.fcProcessingQuantity || 0,
+        now
+      ]);
+    }
+    
+    // データをシートに書き込み
+    if (rows.length > 0) {
+      this.sheet.getRange(2, 1, rows.length, 11).setValues(rows);
+      
+      // 数値列にフォーマット設定
+      for (let i = 3; i <= 10; i++) {
+        this.sheet.getRange(2, i, rows.length, 1).setNumberFormat('#,##0');
+        this.sheet.getRange(2, i, rows.length, 1).setHorizontalAlignment('right');
+      }
+      
+      // データ行に交互の背景色を設定
+      for (let i = 0; i < rows.length; i++) {
+        const rowNum = i + 2;
+        const color = i % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
+        this.sheet.getRange(rowNum, 1, 1, 11).setBackground(color);
+      }
+    }
+    
+    Logger.log(`${rows.length}件の在庫データを書き込みました。`);
+  }
+}
+
+/**
+ * 在庫状況を更新するメイン関数
+ */
+function updateInventoryStatus() {
+  try {
+    // 1. 売上シートからASINリストを取得
+    const salesSheet = new SalesSheet("売上/日", "B2");
+    const asinList = salesSheet.getASINList();
+    Logger.log(`${asinList.length}件のASINを取得しました。`);
+    
+    // 2. ASINからSKUへのマッピングを取得
+    const skuDownloader = new SKUDownloader("/listings/2021-08-01/items/APS8L6SC4MEPF");
+    const asinToSku = skuDownloader.getASINtoSKUs();
+    Logger.log(`${Object.keys(asinToSku).length}件のSKUマッピングを取得しました。`);
+    
+    // 3. SKUリストを作成
+    const skuList = asinList.map(asin => asinToSku[asin]).filter(sku => sku);
+    Logger.log(`${skuList.length}件の有効なSKUを特定しました。`);
+    
+    if (skuList.length === 0) {
+      Logger.log('有効なSKUが見つかりませんでした。処理を終了します。');
+      return;
+    }
+    
+    // 4. 在庫サマリーを取得
+    const inventoryDownloader = new InventorySummariesDownloader("/fba/inventory/v1/summaries");
+    const inventoryData = inventoryDownloader.getInventorySummaries(skuList);
+    Logger.log(`${inventoryData.length}件の在庫データを取得しました。`);
+    
+    // 5. SKUからASINへの逆マッピングを作成
+    const skuToAsin = {};
+    for (let asin in asinToSku) {
+      skuToAsin[asinToSku[asin]] = asin;
+    }
+    
+    // 6. 納品状況シートに書き込み
+    const inventorySheet = new InventorySheet();
+    inventorySheet.writeInventoryData(inventoryData, skuToAsin);
+    
+    Logger.log('在庫状況の更新が完了しました。');
+    
+  } catch (error) {
+    Logger.log('エラーが発生しました: ' + error.toString());
+    throw error;
+  }
+}
+
