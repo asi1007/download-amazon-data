@@ -497,9 +497,9 @@ class InventorySheet {
       const sku = inventory.sellerSku || '';
       const asin = inventory.asin || '';
       
-      // inventoryDetailsとreservedQuantityから各値を取得
+      // inventoryDetailsから各値を取得
       const inventoryDetails = inventory.inventoryDetails || {};
-      const reserved = inventory.reservedQuantity || {};
+      const reserved = inventoryDetails.reservedQuantity || {};
       
       rows.push([
         asin,
