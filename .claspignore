@@ -1,0 +1,19 @@
+# テストとカバレッジ関連
+**/*test.js
+coverage/**
+*.test.js
+
+# Node.js関連
+node_modules/**
+package.json
+package-lock.json
+
+# 設定ファイル
+jest.config.js
+.gitignore
+.git/**
+
+# ドキュメント
+README.md
+SETUP.md
+
