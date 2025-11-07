@@ -457,11 +457,35 @@ class InventorySheet {
    * @param {Array<Object>} inventoryData - 在庫データの配列
    */
   writeInventoryData(inventoryData) {
-    // 既存データをクリア（ヘッダー以外）
-    const lastRow = this.sheet.getLastRow();
-    if (lastRow > 1) {
-      this.sheet.getRange(2, 1, lastRow - 1, 11).clearContent();
-    }
+    // シート全体をクリア
+    this.sheet.clear();
+    
+    // ヘッダー行を設定
+    const headers = [
+      'ASIN',
+      'SKU',
+      '販売可能\n(fulfillableQuantity)',
+      '納品準備中\n(inboundWorkingQuantity)',
+      '納品中\n(inboundShippedQuantity)',
+      '受領中\n(inboundReceivingQuantity)',
+      '予約済合計\n(totalReservedQuantity)',
+      '注文確保\n(pendingCustomerOrderQuantity)',
+      '転送中\n(pendingTransshipmentQuantity)',
+      '処理中\n(fcProcessingQuantity)',
+      '最終更新日時'
+    ];
+    
+    this.sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // ヘッダー行のフォーマット設定
+    const headerRange = this.sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#4CAF50');
+    headerRange.setFontColor('#FFFFFF');
+    headerRange.setHorizontalAlignment('center');
+    headerRange.setVerticalAlignment('middle');
+    headerRange.setWrap(true);
+    this.sheet.setRowHeight(1, 60);
     
     // データを整形
     const rows = [];
@@ -488,6 +512,14 @@ class InventorySheet {
         now
       ]);
     }
+    
+    // 列幅の調整
+    this.sheet.setColumnWidth(1, 100); // ASIN
+    this.sheet.setColumnWidth(2, 150); // SKU
+    for (let i = 3; i <= 10; i++) {
+      this.sheet.setColumnWidth(i, 100);
+    }
+    this.sheet.setColumnWidth(11, 150); // 最終更新日時
     
     // データをシートに書き込み
     if (rows.length > 0) {
