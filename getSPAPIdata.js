@@ -497,16 +497,17 @@ class InventorySheet {
       const sku = inventory.sellerSku || '';
       const asin = inventory.asin || '';
       
-      // reservedQuantityの各値を取得
+      // inventoryDetailsとreservedQuantityから各値を取得
+      const inventoryDetails = inventory.inventoryDetails || {};
       const reserved = inventory.reservedQuantity || {};
       
       rows.push([
         asin,
         sku,
-        inventory.fulfillableQuantity || 0,
-        inventory.inboundWorkingQuantity || 0,
-        inventory.inboundShippedQuantity || 0,
-        inventory.inboundReceivingQuantity || 0,
+        inventoryDetails.fulfillableQuantity || 0,
+        inventoryDetails.inboundWorkingQuantity || 0,
+        inventoryDetails.inboundShippedQuantity || 0,
+        inventoryDetails.inboundReceivingQuantity || 0,
         reserved.totalReservedQuantity || 0,
         reserved.pendingCustomerOrderQuantity || 0,
         reserved.pendingTransshipmentQuantity || 0,
