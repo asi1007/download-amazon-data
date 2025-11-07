@@ -355,7 +355,8 @@ class InventorySummariesDownloader extends Downloader {
     let queryParams = [
       this.marketplaceIDs,
       "granularityType=Marketplace",
-      "granularityId=A1VC38T7YXB528"
+      "granularityId=A1VC38T7YXB528",
+      "details=true"  // reservedQuantityの詳細を取得
     ];
     
     // startDateTimeが指定されている場合は追加
@@ -377,6 +378,7 @@ class InventorySummariesDownloader extends Downloader {
         this.marketplaceIDs,
         "granularityType=Marketplace",
         "granularityId=A1VC38T7YXB528",
+        "details=true",  // reservedQuantityの詳細を取得
         "nextToken=" + encodeURIComponent(nextToken)
       ];
       
