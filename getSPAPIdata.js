@@ -364,8 +364,8 @@ class InventorySummariesDownloader extends Downloader {
       allInventories = allInventories.concat(data.payload.inventorySummaries);
     }
     
-    // nextTokenがある場合は次のページを取得
-    let nextToken = data.payload ? data.payload.nextToken : null;
+    // nextTokenがある場合は次のページを取得（paginationオブジェクトから取得）
+    let nextToken = data.pagination ? data.pagination.nextToken : null;
     while (nextToken) {
       queryParams = [
         this.marketplaceIDs,
@@ -378,7 +378,7 @@ class InventorySummariesDownloader extends Downloader {
       if (data.payload && data.payload.inventorySummaries) {
         allInventories = allInventories.concat(data.payload.inventorySummaries);
       }
-      nextToken = data.payload ? data.payload.nextToken : null;
+      nextToken = data.pagination ? data.pagination.nextToken : null;
     }
     
     return allInventories;
