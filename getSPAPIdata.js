@@ -344,64 +344,44 @@ function deleteOrderNumber() {
 
 class InventorySummariesDownloader extends Downloader {
   /**
-   * SKUリストの在庫サマリーを取得
-   * @param {Array<string>} skus - SKUのリスト（最大50件）
-   * @returns {Object} 在庫サマリーデータ
+   * 全ての在庫サマリーを取得（SKU指定なし）
+   * @returns {Array} 在庫サマリーデータの配列
    */
-  getInventorySummaries(skus) {
-    // SP-APIは最大50件のSKUを一度に取得できる
-    const skuBatches = this.chunkArray(skus, 50);
+  getAllInventorySummaries() {
     let allInventories = [];
     
-    for (let batch of skuBatches) {
-      let queryParams = [
+    // 初回リクエスト（SKU指定なしで全在庫を取得）
+    let queryParams = [
+      this.marketplaceIDs,
+      "granularityType=Marketplace",
+      "granularityId=A1VC38T7YXB528"
+    ];
+    
+    this.setQueryParams(queryParams);
+    let data = this.getData();
+    
+    if (data.payload && data.payload.inventorySummaries) {
+      allInventories = allInventories.concat(data.payload.inventorySummaries);
+    }
+    
+    // nextTokenがある場合は次のページを取得
+    let nextToken = data.payload ? data.payload.nextToken : null;
+    while (nextToken) {
+      queryParams = [
         this.marketplaceIDs,
         "granularityType=Marketplace",
-        "granularityId=A1VC38T7YXB528"
+        "granularityId=A1VC38T7YXB528",
+        "nextToken=" + encodeURIComponent(nextToken)
       ];
-      
-      // SKUをクエリパラメータに追加
-      batch.forEach(sku => {
-        queryParams.push("sellerSkus=" + encodeURIComponent(sku));
-      });
-      
       this.setQueryParams(queryParams);
-      let data = this.getData();
-      
+      data = this.getData();
       if (data.payload && data.payload.inventorySummaries) {
         allInventories = allInventories.concat(data.payload.inventorySummaries);
       }
-      
-      // nextTokenがある場合は次のページを取得
-      let nextToken = data.payload ? data.payload.nextToken : null;
-      while (nextToken) {
-        queryParams = [
-          this.marketplaceIDs,
-          "granularityType=Marketplace",
-          "granularityId=A1VC38T7YXB528",
-          "nextToken=" + encodeURIComponent(nextToken)
-        ];
-        this.setQueryParams(queryParams);
-        data = this.getData();
-        if (data.payload && data.payload.inventorySummaries) {
-          allInventories = allInventories.concat(data.payload.inventorySummaries);
-        }
-        nextToken = data.payload ? data.payload.nextToken : null;
-      }
+      nextToken = data.payload ? data.payload.nextToken : null;
     }
     
     return allInventories;
-  }
-  
-  /**
-   * 配列を指定サイズのチャンクに分割
-   */
-  chunkArray(array, size) {
-    const chunks = [];
-    for (let i = 0; i < array.length; i += size) {
-      chunks.push(array.slice(i, i + size));
-    }
-    return chunks;
   }
 }
 
@@ -463,9 +443,8 @@ class InventorySheet {
   /**
    * 在庫データをシートに書き込み
    * @param {Array<Object>} inventoryData - 在庫データの配列
-   * @param {Object} skuToAsin - SKUからASINへのマッピング
    */
-  writeInventoryData(inventoryData, skuToAsin) {
+  writeInventoryData(inventoryData) {
     // 既存データをクリア（ヘッダー以外）
     const lastRow = this.sheet.getLastRow();
     if (lastRow > 1) {
@@ -478,7 +457,7 @@ class InventorySheet {
     
     for (let inventory of inventoryData) {
       const sku = inventory.sellerSku || '';
-      const asin = inventory.asin || skuToAsin[sku] || '';
+      const asin = inventory.asin || '';
       
       // reservedQuantityの各値を取得
       const reserved = inventory.reservedQuantity || {};
@@ -525,39 +504,16 @@ class InventorySheet {
  */
 function updateInventoryStatus() {
   try {
-    // 1. 売上シートからASINリストを取得
-    const salesSheet = new SalesSheet("売上/日", "B2");
-    const asinList = salesSheet.getASINList();
-    Logger.log(`${asinList.length}件のASINを取得しました。`);
+    Logger.log('在庫状況の取得を開始します...');
     
-    // 2. ASINからSKUへのマッピングを取得
-    const skuDownloader = new SKUDownloader("/listings/2021-08-01/items/APS8L6SC4MEPF");
-    const asinToSku = skuDownloader.getASINtoSKUs();
-    Logger.log(`${Object.keys(asinToSku).length}件のSKUマッピングを取得しました。`);
-    
-    // 3. SKUリストを作成
-    const skuList = asinList.map(asin => asinToSku[asin]).filter(sku => sku);
-    Logger.log(`${skuList.length}件の有効なSKUを特定しました。`);
-    
-    if (skuList.length === 0) {
-      Logger.log('有効なSKUが見つかりませんでした。処理を終了します。');
-      return;
-    }
-    
-    // 4. 在庫サマリーを取得
+    // 1. 全ての在庫サマリーを取得（SKU指定なし）
     const inventoryDownloader = new InventorySummariesDownloader("/fba/inventory/v1/summaries");
-    const inventoryData = inventoryDownloader.getInventorySummaries(skuList);
+    const inventoryData = inventoryDownloader.getAllInventorySummaries();
     Logger.log(`${inventoryData.length}件の在庫データを取得しました。`);
     
-    // 5. SKUからASINへの逆マッピングを作成
-    const skuToAsin = {};
-    for (let asin in asinToSku) {
-      skuToAsin[asinToSku[asin]] = asin;
-    }
-    
-    // 6. 納品状況シートに書き込み
+    // 2. 納品状況シートに書き込み
     const inventorySheet = new InventorySheet();
-    inventorySheet.writeInventoryData(inventoryData, skuToAsin);
+    inventorySheet.writeInventoryData(inventoryData);
     
     Logger.log('在庫状況の更新が完了しました。');
     
