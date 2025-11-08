@@ -291,8 +291,6 @@ function main(type){
       endDate.setDate(endDate.getDate() + diff);
       startDate.setDate(endDate.getDate()-7)
       //endDate = new Date(2025, 6, 28, 0, 0, 0);  //startDate = new Date(2025, 6, 21, 0, 0, 0);
-      startDate = new Date(2025, 9, 20, 0, 0, 0);  
-      endDate = new Date(2025, 9, 27, 0, 0, 0);
       asinSalesInfos = salesDataDownloader.getSalesInfosOf(asinList, type, startDate, endDate);
       let asinInfos = Object.entries(asinSalesInfos);
           // return .unitCount, .totalSales.amount, .orderCount
