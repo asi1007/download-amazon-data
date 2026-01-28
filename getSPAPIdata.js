@@ -550,27 +550,471 @@ class InventorySheet {
 function updateInventoryStatus() {
   try {
     Logger.log('在庫状況の取得を開始します...');
-    
+
     // 1ヶ月前の日時を計算
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 1);
     startDate.setHours(0, 0, 0, 0);
     Logger.log(`${startDate.toISOString()} 以降に更新された在庫を取得します。`);
-    
+
     // 1. 直近1ヶ月に更新された在庫サマリーを取得
     const inventoryDownloader = new InventorySummariesDownloader("/fba/inventory/v1/summaries");
     const inventoryData = inventoryDownloader.getAllInventorySummaries(startDate);
     Logger.log(`${inventoryData.length}件の在庫データを取得しました。`);
-    
+
     // 2. 納品状況シートに書き込み
     const inventorySheet = new InventorySheet();
     inventorySheet.writeInventoryData(inventoryData);
-    
+
     Logger.log('在庫状況の更新が完了しました。');
-    
+
   } catch (error) {
     Logger.log('エラーが発生しました: ' + error.toString());
     throw error;
   }
+}
+
+// =====================================
+// コスト情報読み取り機能
+// =====================================
+
+class CostDataReader {
+  constructor() {
+    const SHEET_ID = '1aAliE0u45YbMwcBMczrLrG82MRMjOVc999L3GWCUENE';
+    const SHEET_NAME = '売上/日';
+    this.spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    this.sheet = this.spreadsheet.getSheetByName(SHEET_NAME);
+    this.HEADER_ROW = 4;
+
+    // カラム位置（1始まり）
+    // A=1, B=2, ..., Z=26, AA=27, ..., AZ=52, BA=53, ..., BE=57, ...
+    this.COLUMNS = {
+      ASIN: 1,              // A列
+      LOCAL_PRICE: 57,      // BE列: 現地価格（購入価格）
+      SHIP: 58,             // BF列: 国際送料
+      TAX: 59,              // BG列: 関税消費税
+      EXTRA: 60,            // BH列: 梱包合計
+      VARIABLE_FEE: 72,     // BT列: 販売手数料
+      FIXED_FEE: 73,        // BU列: FBA手数料
+      PROFIT: 75            // BW列: 利益
+    };
+  }
+
+  getASINList() {
+    const lastRow = this.sheet.getLastRow();
+    const asinRange = this.sheet.getRange(1, this.COLUMNS.ASIN, lastRow);
+    const asinValues = asinRange.getValues();
+
+    const asinList = [];
+    const asinToRow = {};
+
+    for (let i = 0; i < asinValues.length; i++) {
+      const asin = asinValues[i][0];
+      if (asin && asin.length === 10) {
+        asinList.push(asin);
+        asinToRow[asin] = i + 1;
+      }
+    }
+
+    this.asinList = asinList;
+    this.asinToRow = asinToRow;
+    return asinList;
+  }
+
+  getCostDataForASIN(asin) {
+    if (!this.asinToRow) {
+      this.getASINList();
+    }
+
+    const row = this.asinToRow[asin];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      asin: asin,
+      localPrice: this.sheet.getRange(row, this.COLUMNS.LOCAL_PRICE).getValue() || 0,
+      shipCost: this.sheet.getRange(row, this.COLUMNS.SHIP).getValue() || 0,
+      taxCost: this.sheet.getRange(row, this.COLUMNS.TAX).getValue() || 0,
+      extraCost: this.sheet.getRange(row, this.COLUMNS.EXTRA).getValue() || 0,
+      variableFee: this.sheet.getRange(row, this.COLUMNS.VARIABLE_FEE).getValue() || 0,
+      fixedFee: this.sheet.getRange(row, this.COLUMNS.FIXED_FEE).getValue() || 0,
+      profit: this.sheet.getRange(row, this.COLUMNS.PROFIT).getValue() || 0
+    };
+  }
+
+  getAllCostData() {
+    if (!this.asinList) {
+      this.getASINList();
+    }
+
+    const lastRow = this.sheet.getLastRow();
+
+    // 一括でデータを取得（パフォーマンス向上）
+    const localPriceData = this.sheet.getRange(1, this.COLUMNS.LOCAL_PRICE, lastRow).getValues();
+    const shipData = this.sheet.getRange(1, this.COLUMNS.SHIP, lastRow).getValues();
+    const taxData = this.sheet.getRange(1, this.COLUMNS.TAX, lastRow).getValues();
+    const extraData = this.sheet.getRange(1, this.COLUMNS.EXTRA, lastRow).getValues();
+    const variableFeeData = this.sheet.getRange(1, this.COLUMNS.VARIABLE_FEE, lastRow).getValues();
+    const fixedFeeData = this.sheet.getRange(1, this.COLUMNS.FIXED_FEE, lastRow).getValues();
+    const profitData = this.sheet.getRange(1, this.COLUMNS.PROFIT, lastRow).getValues();
+
+    const result = {};
+
+    for (const asin of this.asinList) {
+      const row = this.asinToRow[asin];
+      const idx = row - 1;
+
+      result[asin] = {
+        asin: asin,
+        localPrice: localPriceData[idx][0] || 0,
+        shipCost: shipData[idx][0] || 0,
+        taxCost: taxData[idx][0] || 0,
+        extraCost: extraData[idx][0] || 0,
+        variableFee: variableFeeData[idx][0] || 0,
+        fixedFee: fixedFeeData[idx][0] || 0,
+        profit: profitData[idx][0] || 0
+      };
+    }
+
+    return result;
+  }
+}
+
+function getCostData() {
+  const reader = new CostDataReader();
+  const asinList = reader.getASINList();
+  const costData = reader.getAllCostData();
+
+  Logger.log(`${asinList.length}件のASINのコストデータを取得しました。`);
+
+  // サンプル出力（最初の3件）
+  let count = 0;
+  for (const asin in costData) {
+    if (count >= 3) break;
+    Logger.log(JSON.stringify(costData[asin]));
+    count++;
+  }
+
+  return costData;
+}
+
+// =====================================
+// 週次コスト集計機能
+// =====================================
+
+class WeeklyCostSheet {
+  constructor() {
+    const SHEET_ID = '1aAliE0u45YbMwcBMczrLrG82MRMjOVc999L3GWCUENE';
+    const SHEET_NAME = '週次集計';
+    this.spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    this.sheet = this.spreadsheet.getSheetByName(SHEET_NAME);
+
+    if (!this.sheet) {
+      this.sheet = this.spreadsheet.insertSheet(SHEET_NAME);
+      this.initializeSheet();
+    }
+  }
+
+  initializeSheet() {
+    const headers = ['ASIN', '年月', '週', '売上個数', '売上金額', 'コスト', '広告費', '粗利益'];
+    this.sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+    const headerRange = this.sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#4CAF50');
+    headerRange.setFontColor('#FFFFFF');
+  }
+
+  writeWeeklyCostData(weeklyData) {
+    const lastRow = this.sheet.getLastRow();
+
+    if (weeklyData.length > 0) {
+      this.sheet.getRange(lastRow + 1, 1, weeklyData.length, weeklyData[0].length).setValues(weeklyData);
+      Logger.log(`${weeklyData.length}件の週次データを書き込みました。`);
+    }
+  }
+}
+
+function updateWeeklyCostSummary() {
+  try {
+    Logger.log('週次コスト集計を開始します...');
+
+    // 1. 売上データの取得（既存のmain関数と同様のロジック）
+    const mainSheet = new SalesSheet("売上/日", "B2");
+    const asinList = mainSheet.getASINList();
+
+    const salesDataDownloader = new SalesDownloader("/sales/v1/orderMetrics");
+    const today = new Date();
+    let endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0);
+    const day = endDate.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    endDate.setDate(endDate.getDate() + diff);
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - 7);
+
+    Logger.log(`集計期間: ${startDate.toISOString()} - ${endDate.toISOString()}`);
+
+    const asinSalesInfos = salesDataDownloader.getSalesInfosOf(asinList, "Week", startDate, endDate);
+
+    // 2. コストデータの取得
+    const costReader = new CostDataReader();
+    costReader.getASINList();
+    const costData = costReader.getAllCostData();
+
+    // 3. 年月と週の計算
+    const yearMonth = Utilities.formatDate(startDate, "JST", "yyyy-MM");
+    const weekOfMonth = Math.ceil(startDate.getDate() / 7);
+
+    // 4. データの結合と計算
+    const weeklyData = [];
+
+    for (const asin of asinList) {
+      const salesInfo = asinSalesInfos[asin];
+      const cost = costData[asin];
+
+      if (!salesInfo) continue;
+
+      const unitCount = salesInfo.unitCount || 0;
+      const salesAmount = salesInfo.totalSales ? salesInfo.totalSales.amount : 0;
+
+      // コスト計算: (購入価格 + 国際送料 + 関税消費税 + 梱包合計 + 販売手数料 + FBA手数料) × 売上個数
+      let totalCost = 0;
+      if (cost && unitCount > 0) {
+        const unitCost = (cost.localPrice || 0) + (cost.shipCost || 0) +
+                        (cost.taxCost || 0) + (cost.extraCost || 0) +
+                        (cost.variableFee || 0) + (cost.fixedFee || 0);
+        totalCost = unitCost * unitCount;
+      }
+
+      // 広告費は現時点では0（別途取得が必要な場合は拡張）
+      const adCost = 0;
+
+      // 粗利益 = 売上金額 - コスト - 広告費
+      const grossProfit = salesAmount - totalCost - adCost;
+
+      weeklyData.push([
+        asin,
+        yearMonth,
+        weekOfMonth,
+        unitCount,
+        salesAmount,
+        totalCost,
+        adCost,
+        grossProfit
+      ]);
+    }
+
+    // 5. 週次集計シートに書き込み
+    const weeklyCostSheet = new WeeklyCostSheet();
+    weeklyCostSheet.writeWeeklyCostData(weeklyData);
+
+    Logger.log('週次コスト集計が完了しました。');
+
+  } catch (error) {
+    Logger.log('エラーが発生しました: ' + error.toString());
+    throw error;
+  }
+}
+
+// =====================================
+// Amazon広告データ読み取り機能
+// =====================================
+
+class AmazonAdData {
+  constructor(row) {
+    this.periodStart = row[0];       // 対象期間（開始）
+    this.asin = row[1];              // ASIN
+    this.adSpend = row[2] || 0;      // 広告費
+    this.impressions = row[3] || 0;  // インプレッション
+    this.clicks = row[4] || 0;       // クリック
+    this.sales = row[5] || 0;        // 売上
+    this.orders = row[6] || 0;       // 注文数
+    this.acos = row[7] || 0;         // ACOS(%)
+    this.cpc = row[8] || 0;          // CPC
+    this.ctr = row[9] || 0;          // CTR(%)
+  }
+
+  toArray() {
+    return [
+      this.periodStart,
+      this.asin,
+      this.adSpend,
+      this.impressions,
+      this.clicks,
+      this.sales,
+      this.orders,
+      this.acos,
+      this.cpc,
+      this.ctr
+    ];
+  }
+
+  toObject() {
+    return {
+      periodStart: this.periodStart,
+      asin: this.asin,
+      adSpend: this.adSpend,
+      impressions: this.impressions,
+      clicks: this.clicks,
+      sales: this.sales,
+      orders: this.orders,
+      acos: this.acos,
+      cpc: this.cpc,
+      ctr: this.ctr
+    };
+  }
+}
+
+class AmazonAdDataReader {
+  constructor() {
+    const SHEET_ID = '1aAliE0u45YbMwcBMczrLrG82MRMjOVc999L3GWCUENE';
+    const SHEET_NAME = 'Amazon広告';
+    this.spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    this.sheet = this.spreadsheet.getSheetByName(SHEET_NAME);
+    this.HEADER_ROW = 1;
+
+    this.COLUMNS = {
+      ACQUISITION_DATE: 0,  // A列: 取得日時
+      PERIOD_START: 1,      // B列: 対象期間（開始）
+      PERIOD_END: 2,        // C列: 対象期間（終了）
+      ASIN: 3,              // D列: ASIN
+      AD_SPEND: 4,          // E列: 広告費
+      IMPRESSIONS: 5,       // F列: インプレッション
+      CLICKS: 6,            // G列: クリック
+      SALES: 7,             // H列: 売上
+      ORDERS: 8,            // I列: 注文数
+      ACOS: 9,              // J列: ACOS(%)
+      CPC: 10,              // K列: CPC
+      CTR: 11               // L列: CTR(%)
+    };
+  }
+
+  _getAllData() {
+    const lastRow = this.sheet.getLastRow();
+    if (lastRow <= this.HEADER_ROW) {
+      return [];
+    }
+    const dataRange = this.sheet.getRange(
+      this.HEADER_ROW + 1,
+      1,
+      lastRow - this.HEADER_ROW,
+      12
+    );
+    return dataRange.getValues();
+  }
+
+  _rowToAmazonAdData(row) {
+    const dataColumns = [
+      row[this.COLUMNS.PERIOD_START],
+      row[this.COLUMNS.ASIN],
+      row[this.COLUMNS.AD_SPEND],
+      row[this.COLUMNS.IMPRESSIONS],
+      row[this.COLUMNS.CLICKS],
+      row[this.COLUMNS.SALES],
+      row[this.COLUMNS.ORDERS],
+      row[this.COLUMNS.ACOS],
+      row[this.COLUMNS.CPC],
+      row[this.COLUMNS.CTR]
+    ];
+    return new AmazonAdData(dataColumns);
+  }
+
+  fetchAll() {
+    const allData = this._getAllData();
+    return allData
+      .filter(row => row[this.COLUMNS.PERIOD_START])
+      .map(row => this._rowToAmazonAdData(row));
+  }
+
+  fetchByPeriod(periodStart) {
+    const allData = this.fetchAll();
+    const targetDate = periodStart instanceof Date
+      ? Utilities.formatDate(periodStart, 'Asia/Tokyo', 'yyyy-MM-dd')
+      : periodStart;
+
+    return allData.filter(data => {
+      const dataDate = data.periodStart instanceof Date
+        ? Utilities.formatDate(data.periodStart, 'Asia/Tokyo', 'yyyy-MM-dd')
+        : data.periodStart;
+      return dataDate === targetDate;
+    });
+  }
+
+  fetchLatest() {
+    const allData = this.fetchAll();
+    if (allData.length === 0) {
+      return [];
+    }
+
+    let latestDate = null;
+    for (const data of allData) {
+      const currentDate = data.periodStart instanceof Date
+        ? data.periodStart
+        : new Date(data.periodStart);
+      if (!latestDate || currentDate > latestDate) {
+        latestDate = currentDate;
+      }
+    }
+
+    return this.fetchByPeriod(latestDate);
+  }
+
+  fetchByAsin(asin) {
+    const allData = this.fetchAll();
+    return allData.filter(data => data.asin === asin);
+  }
+
+  fetchLatestByAsin(asin) {
+    const latestData = this.fetchLatest();
+    return latestData.find(data => data.asin === asin) || null;
+  }
+
+  getAsinList() {
+    const allData = this.fetchAll();
+    const asinSet = new Set(allData.map(data => data.asin));
+    return Array.from(asinSet);
+  }
+
+  getLatestPeriodDate() {
+    const allData = this.fetchAll();
+    if (allData.length === 0) {
+      return null;
+    }
+
+    let latestDate = null;
+    for (const data of allData) {
+      const currentDate = data.periodStart instanceof Date
+        ? data.periodStart
+        : new Date(data.periodStart);
+      if (!latestDate || currentDate > latestDate) {
+        latestDate = currentDate;
+      }
+    }
+    return latestDate;
+  }
+}
+
+function getAmazonAdData() {
+  const reader = new AmazonAdDataReader();
+  const latestData = reader.fetchLatest();
+
+  Logger.log(`最新の広告データ: ${latestData.length}件`);
+  Logger.log(`対象期間: ${reader.getLatestPeriodDate()}`);
+
+  for (const data of latestData.slice(0, 5)) {
+    Logger.log(`ASIN: ${data.asin}, 広告費: ${data.adSpend}, ACOS: ${data.acos}%`);
+  }
+
+  return latestData;
+}
+
+function getAmazonAdDataByDate(dateString) {
+  const reader = new AmazonAdDataReader();
+  const data = reader.fetchByPeriod(dateString);
+
+  Logger.log(`${dateString}の広告データ: ${data.length}件`);
+
+  return data;
 }
 
