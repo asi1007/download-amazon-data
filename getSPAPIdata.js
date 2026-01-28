@@ -545,7 +545,12 @@ class InventorySheet {
 }
 
 /**
- * 在庫状況を更新するメイン関数
+ * Update inventory summaries modified within the last month and write them to the inventory sheet.
+ *
+ * Computes a start date one month before now, retrieves all inventory summaries updated since that date,
+ * and writes the collected summaries to the "納品状況" inventory sheet.
+ *
+ * @throws {Error} If fetching inventory summaries or writing to the sheet fails; the original error is rethrown.
  */
 function updateInventoryStatus() {
   try {
@@ -681,6 +686,12 @@ class CostDataReader {
   }
 }
 
+/**
+ * Retrieve cost data for all ASINs using CostDataReader.
+ *
+ * Logs the number of ASINs retrieved and up to three sample cost entries.
+ * @return {Object.<string, Object>} A mapping from ASIN to its cost data object.
+ */
 function getCostData() {
   const reader = new CostDataReader();
   const asinList = reader.getASINList();
@@ -736,6 +747,14 @@ class WeeklyCostSheet {
   }
 }
 
+/**
+ * Aggregate sales and cost data for the previous week and write weekly cost summary rows to the WeeklyCostSheet.
+ *
+ * Calculates the previous week's date range, retrieves weekly sales for ASINs and per-ASIN cost data, computes total cost,
+ * advertising cost (currently zero), and gross profit per ASIN, then appends the results to the weekly summary sheet.
+ *
+ * @throws {Error} If any step (data retrieval, calculation, or sheet writing) fails.
+ */
 function updateWeeklyCostSummary() {
   try {
     Logger.log('週次コスト集計を開始します...');
@@ -995,6 +1014,12 @@ class AmazonAdDataReader {
   }
 }
 
+/**
+ * Retrieve the latest Amazon advertising data and log a brief summary.
+ *
+ * Also logs the number of records, the period date, and up to the first five entries (ASIN, ad spend, ACOS).
+ * @returns {AmazonAdData[]} Array of AmazonAdData objects for the latest period.
+ */
 function getAmazonAdData() {
   const reader = new AmazonAdDataReader();
   const latestData = reader.fetchLatest();
@@ -1009,6 +1034,11 @@ function getAmazonAdData() {
   return latestData;
 }
 
+/**
+ * Retrieve Amazon advertising data for the specified period date.
+ * @param {string|Date} dateString - Period start date as a Date object or a date string (e.g., "YYYY-MM-DD"); used to filter rows matching that period.
+ * @returns {AmazonAdData[]} An array of AmazonAdData objects for the specified period (empty if no data found).
+ */
 function getAmazonAdDataByDate(dateString) {
   const reader = new AmazonAdDataReader();
   const data = reader.fetchByPeriod(dateString);
@@ -1017,4 +1047,3 @@ function getAmazonAdDataByDate(dateString) {
 
   return data;
 }
-
