@@ -6,6 +6,8 @@ class CostDataReader {
 
     this.COLUMNS = {
       ASIN: 1,
+      IMAGE: 7,
+      AD_COST: 16,
       LOCAL_PRICE: 57,
       SHIP: 58,
       TAX: 59,
@@ -49,13 +51,15 @@ class CostDataReader {
 
     return new CostData({
       asin: asin,
+      imageUrl: this.sheet.getRange(row, this.COLUMNS.IMAGE).getValue() || '',
       localPrice: this.sheet.getRange(row, this.COLUMNS.LOCAL_PRICE).getValue() || 0,
       shipCost: this.sheet.getRange(row, this.COLUMNS.SHIP).getValue() || 0,
       taxCost: this.sheet.getRange(row, this.COLUMNS.TAX).getValue() || 0,
       extraCost: this.sheet.getRange(row, this.COLUMNS.EXTRA).getValue() || 0,
       variableFee: this.sheet.getRange(row, this.COLUMNS.VARIABLE_FEE).getValue() || 0,
       fixedFee: this.sheet.getRange(row, this.COLUMNS.FIXED_FEE).getValue() || 0,
-      profit: this.sheet.getRange(row, this.COLUMNS.PROFIT).getValue() || 0
+      profit: this.sheet.getRange(row, this.COLUMNS.PROFIT).getValue() || 0,
+      adCost: this.sheet.getRange(row, this.COLUMNS.AD_COST).getValue() || 0
     });
   }
 
@@ -66,6 +70,8 @@ class CostDataReader {
 
     const lastRow = this.sheet.getLastRow();
 
+    const imageData = this.sheet.getRange(1, this.COLUMNS.IMAGE, lastRow).getValues();
+    const adCostData = this.sheet.getRange(1, this.COLUMNS.AD_COST, lastRow).getValues();
     const localPriceData = this.sheet.getRange(1, this.COLUMNS.LOCAL_PRICE, lastRow).getValues();
     const shipData = this.sheet.getRange(1, this.COLUMNS.SHIP, lastRow).getValues();
     const taxData = this.sheet.getRange(1, this.COLUMNS.TAX, lastRow).getValues();
@@ -82,13 +88,15 @@ class CostDataReader {
 
       result[asin] = new CostData({
         asin: asin,
+        imageUrl: imageData[idx][0] || '',
         localPrice: localPriceData[idx][0] || 0,
         shipCost: shipData[idx][0] || 0,
         taxCost: taxData[idx][0] || 0,
         extraCost: extraData[idx][0] || 0,
         variableFee: variableFeeData[idx][0] || 0,
         fixedFee: fixedFeeData[idx][0] || 0,
-        profit: profitData[idx][0] || 0
+        profit: profitData[idx][0] || 0,
+        adCost: adCostData[idx][0] || 0
       });
     }
 

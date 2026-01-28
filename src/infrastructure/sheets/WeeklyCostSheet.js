@@ -2,7 +2,7 @@ class WeeklyCostSheet {
   constructor() {
     const SHEET_NAME = '週次集計';
     this.sheet = getOrCreateSheet(SHEET_NAME);
-    this.headers = ['ASIN', '年月', '週', '売上個数', '売上金額', 'コスト', '広告費', '粗利益'];
+    this.headers = ['ASIN', '画像', '年月', '週', '売上個数', '売上金額', 'コスト', '広告費', '粗利益'];
 
     if (this.sheet.getLastRow() === 0) {
       this.initializeSheet();

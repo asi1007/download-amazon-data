@@ -50,11 +50,13 @@ class UpdateWeeklyCostUseCase {
       const salesAmount = salesInfo.totalSales ? salesInfo.totalSales.amount : 0;
 
       const totalCost = this._calculateTotalCost(cost, unitCount);
-      const adCost = 0;
+      const imageUrl = cost ? cost.imageUrl : '';
+      const adCost = cost ? cost.adCost : 0;
       const grossProfit = salesAmount - totalCost - adCost;
 
       weeklyData.push([
         asin,
+        imageUrl,
         yearMonth,
         weekOfMonth,
         unitCount,
