@@ -24,7 +24,9 @@ class SalesSheet {
 
   writeSalesNums(salesNums) {
     const filter = this.sheet.getFilter();
+    let filterRange = null;
     if (filter) {
+      filterRange = filter.getRange();
       filter.remove();
     }
 
@@ -48,9 +50,14 @@ class SalesSheet {
       this.sheet.getRange(2, this.START_COLUMN, writeData.length, 1).setValues(writeData);
     }
 
-    const lastRow = this.sheet.getLastRow();
-    const lastCol = this.sheet.getLastColumn();
-    this.sheet.getRange(1, 1, lastRow, lastCol).createFilter();
+    if (filterRange) {
+      this.sheet.getRange(
+        filterRange.getRow(),
+        filterRange.getColumn(),
+        filterRange.getNumRows(),
+        filterRange.getNumColumns() + 1
+      ).createFilter();
+    }
   }
 
   writePrice(asintoPrices) {
