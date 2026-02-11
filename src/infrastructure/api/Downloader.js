@@ -20,6 +20,10 @@ class Downloader {
     this.queryParams = queryParams;
   }
 
+  buildRequestUrl(queryParams) {
+    return this.url + "?" + queryParams.join("&");
+  }
+
   getData() {
     this.urlquery = this.url + "?" + this.queryParams.join("&");
     Utilities.sleep(4500);
@@ -27,5 +31,27 @@ class Downloader {
     const response = UrlFetchApp.fetch(this.urlquery, this.options);
     const data = JSON.parse(response.getContentText());
     return data;
+  }
+
+  fetchAll(queryParamsList, batchSize = 10) {
+    const results = [];
+    for (let i = 0; i < queryParamsList.length; i += batchSize) {
+      if (i > 0) {
+        Utilities.sleep(3000);
+      }
+      const batch = queryParamsList.slice(i, i + batchSize);
+      const requests = batch.map(params => ({
+        url: this.buildRequestUrl(params),
+        method: this.options.method,
+        headers: this.options.headers,
+        muteHttpExceptions: this.options.muteHttpExceptions
+      }));
+      console.log("Batch " + (Math.floor(i / batchSize) + 1) + ": " + batch.length + "件リクエスト");
+      const responses = UrlFetchApp.fetchAll(requests);
+      for (const response of responses) {
+        results.push(JSON.parse(response.getContentText()));
+      }
+    }
+    return results;
   }
 }

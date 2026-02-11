@@ -5,6 +5,7 @@ class InventorySheet {
     this.headers = [
       'ASIN',
       'SKU',
+      '販売価格',
       '販売可能\n(fulfillableQuantity)',
       '納品準備中\n(inboundWorkingQuantity)',
       '納品中\n(inboundShippedQuantity)',
@@ -37,10 +38,11 @@ class InventorySheet {
   _setColumnWidths() {
     this.sheet.setColumnWidth(1, 100);
     this.sheet.setColumnWidth(2, 150);
-    for (let i = 3; i <= 10; i++) {
+    this.sheet.setColumnWidth(3, 80);
+    for (let i = 4; i <= 11; i++) {
       this.sheet.setColumnWidth(i, 100);
     }
-    this.sheet.setColumnWidth(11, 150);
+    this.sheet.setColumnWidth(12, 150);
   }
 
   writeInventoryData(inventoryData) {
@@ -60,7 +62,7 @@ class InventorySheet {
     this._setColumnWidths();
 
     if (rows.length > 0) {
-      this.sheet.getRange(2, 1, rows.length, 11).setValues(rows);
+      this.sheet.getRange(2, 1, rows.length, 12).setValues(rows);
       this._formatDataRows(rows.length);
     }
 
@@ -68,7 +70,10 @@ class InventorySheet {
   }
 
   _formatDataRows(rowCount) {
-    for (let i = 3; i <= 10; i++) {
+    this.sheet.getRange(2, 3, rowCount, 1).setNumberFormat('¥#,##0');
+    this.sheet.getRange(2, 3, rowCount, 1).setHorizontalAlignment('right');
+
+    for (let i = 4; i <= 11; i++) {
       this.sheet.getRange(2, i, rowCount, 1).setNumberFormat('#,##0');
       this.sheet.getRange(2, i, rowCount, 1).setHorizontalAlignment('right');
     }
@@ -76,7 +81,7 @@ class InventorySheet {
     for (let i = 0; i < rowCount; i++) {
       const rowNum = i + 2;
       const color = i % 2 === 0 ? '#F5F5F5' : '#FFFFFF';
-      this.sheet.getRange(rowNum, 1, 1, 11).setBackground(color);
+      this.sheet.getRange(rowNum, 1, 1, 12).setBackground(color);
     }
   }
 }

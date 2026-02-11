@@ -3,7 +3,6 @@ function updateYesterdaySalesNum() {
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
   const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader);
   useCase.executeDailySales();
-  downloadPrices();
 }
 
 function updateLastWeekSalesNum() {
@@ -25,7 +24,8 @@ function updateInventoryStatus() {
   try {
     const inventoryDownloader = new InventorySummariesDownloader("/fba/inventory/v1/summaries");
     const inventorySheet = new InventorySheet();
-    const useCase = new UpdateInventoryUseCase(inventoryDownloader, inventorySheet);
+    const priceDownloader = new PriceDownloader("/products/pricing/v0/competitivePrice");
+    const useCase = new UpdateInventoryUseCase(inventoryDownloader, inventorySheet, priceDownloader);
     useCase.execute();
   } catch (error) {
     Logger.log('エラーが発生しました: ' + error.toString());

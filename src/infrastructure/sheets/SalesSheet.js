@@ -24,15 +24,25 @@ class SalesSheet {
 
   writeSalesNums(salesNums) {
     this.sheet.insertColumnBefore(this.START_COLUMN);
-    this.sheet.getRange(1, this.START_COLUMN).setValue(Utilities.formatDate(new Date, "JST", "yyyy/MM/dd"));
-    this.sheet.getRange(1, this.START_COLUMN).setNumberFormat("dd");
-    for (let i = 1; i < this.asinRange.getValues().length; i++) {
-      const asin = this.asinRange.getValues()[i - 1][0];
+
+    const values = this.asinRange.getValues();
+    const writeData = [];
+
+    for (let i = 1; i < values.length; i++) {
+      const asin = values[i - 1][0];
       if (this.asinList.includes(asin)) {
-        this.sheet.getRange(i, this.START_COLUMN).setValue(salesNums[asin].unitCount);
-        this.sheet.getRange(i, this.START_COLUMN).setBackground(null);
+        writeData.push([salesNums[asin].unitCount]);
+      } else if (i === 1) {
+        writeData.push([Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd")]);
+      } else {
+        writeData.push([""]);
       }
     }
+
+    if (writeData.length > 0) {
+      this.sheet.getRange(1, this.START_COLUMN, writeData.length, 1).setValues(writeData);
+    }
+    this.sheet.getRange(1, this.START_COLUMN).setNumberFormat("dd");
   }
 
   writePrice(asintoPrices) {

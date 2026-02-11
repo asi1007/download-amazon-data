@@ -9,14 +9,15 @@ class SalesDownloader extends Downloader {
   }
 
   getSalesInfosOf(asinList, type, startDate, endDate) {
-    let count = 0;
+    const queryParamsList = asinList.map(asin =>
+      this.buildQueryParams(asin, type, startDate, endDate)
+    );
+    const responses = this.fetchAll(queryParamsList);
     const asinSalesNums = {};
-    for (const asin of asinList) {
-      const salesData = this.getSalesInfoOf(asin, type, startDate, endDate);
-      asinSalesNums[asin] = salesData;
-      count += 1;
-      console.log(String(count) + "商品目");
-    }
+    asinList.forEach((asin, index) => {
+      asinSalesNums[asin] = responses[index].payload[0];
+    });
+    console.log(asinList.length + "商品の売上データを一括取得完了");
     return asinSalesNums;
   }
 

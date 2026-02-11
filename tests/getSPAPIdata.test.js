@@ -6,6 +6,7 @@ global.PropertiesService = {
 
 global.UrlFetchApp = {
   fetch: jest.fn(),
+  fetchAll: jest.fn(),
 };
 
 global.SpreadsheetApp = {
@@ -14,9 +15,9 @@ global.SpreadsheetApp = {
       getLastRow: jest.fn().mockReturnValue(10),
       getRange: jest.fn().mockReturnValue({
         getValues: jest.fn().mockReturnValue([
-          ['B000EXAMPLE1'],
-          ['B000EXAMPLE2'],
-          ['B000EXAMPLE3'],
+          ['B00EXAMPLE'],
+          ['B00EXAMPLF'],
+          ['B00EXAMPLG'],
         ]),
         getValue: jest.fn().mockReturnValue(5),
         setValue: jest.fn(),
@@ -74,28 +75,55 @@ global.console = {
   log: jest.fn(),
 };
 
+const fs = require('fs');
+const path = require('path');
+
+const sourceFiles = [
+  '../src/infrastructure/sheets/SheetConfig.js',
+  '../src/domain/entities/Transaction.js',
+  '../src/domain/entities/AmazonAdData.js',
+  '../src/domain/value_objects/CostData.js',
+  '../src/domain/value_objects/SalesInfo.js',
+  '../src/domain/value_objects/InventorySummary.js',
+  '../src/infrastructure/api/AuthService.js',
+  '../src/infrastructure/api/Downloader.js',
+  '../src/infrastructure/api/SalesDownloader.js',
+  '../src/infrastructure/api/PriceDownloader.js',
+  '../src/infrastructure/api/SKUDownloader.js',
+  '../src/infrastructure/api/InventorySummariesDownloader.js',
+  '../src/infrastructure/sheets/SalesSheet.js',
+  '../src/infrastructure/sheets/InventorySheet.js',
+  '../src/infrastructure/sheets/CostDataReader.js',
+  '../src/infrastructure/sheets/AmazonAdDataReader.js',
+  '../src/usecases/UpdateSalesUseCase.js',
+  '../src/usecases/UpdatePriceUseCase.js',
+  '../src/usecases/UpdateInventoryUseCase.js',
+  '../src/usecases/GetAdDataUseCase.js',
+  '../src/main.js',
+];
+
+const gasExports = [
+  'getSheetByName', 'getScriptProperty', 'getAuthToken',
+  'Transaction', 'AmazonAdData', 'CostData', 'SalesInfo', 'InventorySummary',
+  'Downloader', 'SalesDownloader', 'PriceDownloader', 'SKUDownloader', 'InventorySummariesDownloader',
+  'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet',
+  'UpdateSalesUseCase', 'UpdatePriceUseCase', 'UpdateInventoryUseCase', 'GetAdDataUseCase', 'UpdateWeeklyCostUseCase',
+  'updateYesterdaySalesNum', 'updateLastWeekSalesNum', 'downloadPrices',
+  'updateInventoryStatus', 'updateWeeklyCostSummary', 'getCostData',
+  'getAmazonAdData', 'getAmazonAdDataByDate', 'deleteOrderNumber',
+];
+
 const loadSourceFiles = () => {
-  require('../src/infrastructure/sheets/SheetConfig');
-  require('../src/domain/entities/Transaction');
-  require('../src/domain/entities/AmazonAdData');
-  require('../src/domain/value_objects/CostData');
-  require('../src/domain/value_objects/SalesInfo');
-  require('../src/domain/value_objects/InventorySummary');
-  require('../src/infrastructure/api/AuthService');
-  require('../src/infrastructure/api/Downloader');
-  require('../src/infrastructure/api/SalesDownloader');
-  require('../src/infrastructure/api/PriceDownloader');
-  require('../src/infrastructure/api/SKUDownloader');
-  require('../src/infrastructure/api/InventorySummariesDownloader');
-  require('../src/infrastructure/sheets/SalesSheet');
-  require('../src/infrastructure/sheets/InventorySheet');
-  require('../src/infrastructure/sheets/CostDataReader');
-  require('../src/infrastructure/sheets/AmazonAdDataReader');
-  require('../src/usecases/UpdateSalesUseCase');
-  require('../src/usecases/UpdatePriceUseCase');
-  require('../src/usecases/UpdateInventoryUseCase');
-  require('../src/usecases/GetAdDataUseCase');
-  require('../src/main');
+  const allCode = sourceFiles.map(f =>
+    fs.readFileSync(path.resolve(__dirname, f), 'utf-8')
+  ).join('\n');
+
+  const assignCode = gasExports.map(name =>
+    `try { this.${name} = ${name}; } catch(e) {}`
+  ).join('\n');
+
+  const fn = new Function(allCode + '\n' + assignCode);
+  fn.call(global);
 };
 
 loadSourceFiles();
@@ -146,8 +174,8 @@ describe('SKUDownloader', () => {
   test('getASINtoSKUs maps ASINs to SKUs', () => {
     const mockResponse = {
       items: [
-        { summaries: [{ asin: 'B000EXAMPLE1' }], sku: 'SKU1' },
-        { summaries: [{ asin: 'B000EXAMPLE2' }], sku: 'SKU2' }
+        { summaries: [{ asin: 'B00EXAMPLE' }], sku: 'SKU1' },
+        { summaries: [{ asin: 'B00EXAMPLF' }], sku: 'SKU2' }
       ],
       pagination: { nextToken: undefined }
     };
@@ -155,8 +183,8 @@ describe('SKUDownloader', () => {
       getContentText: () => JSON.stringify(mockResponse)
     });
     expect(skuDownloader.getASINtoSKUs()).toEqual({
-      'B000EXAMPLE1': 'SKU1',
-      'B000EXAMPLE2': 'SKU2'
+      'B00EXAMPLE': 'SKU1',
+      'B00EXAMPLF': 'SKU2'
     });
   });
 });
@@ -185,7 +213,7 @@ describe('PriceDownloader', () => {
     global.UrlFetchApp.fetch.mockReturnValue({
       getContentText: () => JSON.stringify(mockResponse)
     });
-    expect(priceDownloader.getPriceOf('B000EXAMPLE1')).toEqual(mockResponse.payload);
+    expect(priceDownloader.getPriceOf('B00EXAMPLE')).toEqual(mockResponse.payload);
   });
 });
 
@@ -201,9 +229,29 @@ describe('SalesDownloader', () => {
   test('buildQueryParams creates correct parameters', () => {
     const startDate = new Date('2025-01-01');
     const endDate = new Date('2025-01-02');
-    const params = salesDownloader.buildQueryParams('B000EXAMPLE1', 'Day', startDate, endDate);
+    const params = salesDownloader.buildQueryParams('B00EXAMPLE', 'Day', startDate, endDate);
     expect(params).toContain('granularity=Day');
-    expect(params).toContain('asin=B000EXAMPLE1');
+    expect(params).toContain('asin=B00EXAMPLE');
+  });
+
+  test('getSalesInfosOf uses fetchAll for batch requests', () => {
+    const mockResponses = [
+      { getContentText: () => JSON.stringify({ payload: [{ unitCount: 5, totalSales: { amount: 100 } }] }) },
+      { getContentText: () => JSON.stringify({ payload: [{ unitCount: 3, totalSales: { amount: 60 } }] }) },
+    ];
+    global.UrlFetchApp.fetchAll.mockReturnValue(mockResponses);
+
+    const startDate = new Date('2025-01-01');
+    const endDate = new Date('2025-01-02');
+    const result = salesDownloader.getSalesInfosOf(['B00EXAMPLE', 'B00EXAMPLF'], 'Day', startDate, endDate);
+
+    expect(global.UrlFetchApp.fetchAll).toHaveBeenCalledTimes(1);
+    expect(global.UrlFetchApp.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/test-path'),
+      expect.anything()
+    );
+    expect(result['B00EXAMPLE'].unitCount).toBe(5);
+    expect(result['B00EXAMPLF'].unitCount).toBe(3);
   });
 });
 
@@ -215,15 +263,15 @@ describe('SalesSheet', () => {
 
   test('getASINList returns valid ASINs', () => {
     const asinList = salesSheet.getASINList();
-    expect(asinList).toContain('B000EXAMPLE1');
-    expect(asinList).toContain('B000EXAMPLE2');
+    expect(asinList).toContain('B00EXAMPLE');
+    expect(asinList).toContain('B00EXAMPLF');
   });
 });
 
 describe('CostData', () => {
   test('getTotalUnitCost calculates correctly', () => {
     const costData = new global.CostData({
-      asin: 'B000EXAMPLE1',
+      asin: 'B00EXAMPLE',
       localPrice: 100,
       shipCost: 20,
       taxCost: 10,
@@ -237,9 +285,9 @@ describe('CostData', () => {
 
 describe('AmazonAdData', () => {
   test('creates correct object from row data', () => {
-    const row = ['2025-01-01', 'B000EXAMPLE1', 100, 1000, 50, 500, 10, 20, 2, 5];
+    const row = ['2025-01-01', 'B00EXAMPLE', 100, 1000, 50, 500, 10, 20, 2, 5];
     const adData = new global.AmazonAdData(row);
-    expect(adData.asin).toBe('B000EXAMPLE1');
+    expect(adData.asin).toBe('B00EXAMPLE');
     expect(adData.adSpend).toBe(100);
     expect(adData.acos).toBe(20);
   });

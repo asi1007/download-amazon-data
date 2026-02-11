@@ -2,6 +2,7 @@ class InventorySummary {
   constructor(data) {
     this.asin = data.asin || '';
     this.sellerSku = data.sellerSku || '';
+    this.price = data.price || '';
 
     const inventoryDetails = data.inventoryDetails || {};
     const reserved = inventoryDetails.reservedQuantity || {};
@@ -20,6 +21,7 @@ class InventorySummary {
     return [
       this.asin,
       this.sellerSku,
+      this.price,
       this.fulfillableQuantity,
       this.inboundWorkingQuantity,
       this.inboundShippedQuantity,
