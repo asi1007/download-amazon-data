@@ -23,6 +23,11 @@ class SalesSheet {
   }
 
   writeSalesNums(salesNums) {
+    const filter = this.sheet.getFilter();
+    if (filter) {
+      filter.remove();
+    }
+
     this.sheet.insertColumnBefore(this.START_COLUMN);
     this.sheet.getRange(1, this.START_COLUMN).setValue(Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd"));
     this.sheet.getRange(1, this.START_COLUMN).setNumberFormat("dd");
@@ -42,6 +47,10 @@ class SalesSheet {
     if (writeData.length > 0) {
       this.sheet.getRange(2, this.START_COLUMN, writeData.length, 1).setValues(writeData);
     }
+
+    const lastRow = this.sheet.getLastRow();
+    const lastCol = this.sheet.getLastColumn();
+    this.sheet.getRange(1, 1, lastRow, lastCol).createFilter();
   }
 
   writePrice(asintoPrices) {
