@@ -30,9 +30,10 @@ class SalesSheet {
       filter.remove();
     }
 
+    const HEADER_ROW = 4;
     this.sheet.insertColumnBefore(this.START_COLUMN);
-    this.sheet.getRange(1, this.START_COLUMN).setValue(Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd"));
-    this.sheet.getRange(1, this.START_COLUMN).setNumberFormat("dd");
+    this.sheet.getRange(HEADER_ROW, this.START_COLUMN).setValue(Utilities.formatDate(new Date(), "JST", "yyyy/MM/dd"));
+    this.sheet.getRange(HEADER_ROW, this.START_COLUMN).setNumberFormat("dd");
 
     const values = this.asinRange.getValues();
     const writeData = [];
