@@ -1,13 +1,18 @@
 class SalesSheet {
   constructor(sheetName, cell) {
-    const ASIN_SHEET_NAME = sheetName;
-    this.START_COLUMN = getSheetByName("設定").getRange(cell).getValue();
-    this.PRICE_COLUMN = getSheetByName("設定").getRange("B5").getValue();
-    this.sheet = getSheetByName(ASIN_SHEET_NAME);
-    const lastRow = this.sheet.getLastRow();
-    this.asinRange = this.sheet.getRange(1, 1, lastRow);
+    this.sheetName = sheetName;
+    this.configCell = cell;
+    this._refreshSheet();
     this.asinToRow = {};
     this.asinList = [];
+  }
+
+  _refreshSheet() {
+    this.START_COLUMN = getSheetByName("設定").getRange(this.configCell).getValue();
+    this.PRICE_COLUMN = getSheetByName("設定").getRange("B5").getValue();
+    this.sheet = getSheetByName(this.sheetName);
+    const lastRow = this.sheet.getLastRow();
+    this.asinRange = this.sheet.getRange(1, 1, lastRow);
   }
 
   getASINList() {
@@ -23,6 +28,7 @@ class SalesSheet {
   }
 
   writeSalesNums(salesNums) {
+    this._refreshSheet();
     const filter = this.sheet.getFilter();
     let filterRange = null;
     if (filter) {
