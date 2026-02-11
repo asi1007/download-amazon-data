@@ -33,11 +33,11 @@ class Downloader {
     return data;
   }
 
-  fetchAll(queryParamsList, batchSize = 10) {
+  fetchAll(queryParamsList, batchSize = 5) {
     const results = [];
     for (let i = 0; i < queryParamsList.length; i += batchSize) {
       if (i > 0) {
-        Utilities.sleep(3000);
+        Utilities.sleep(4000);
       }
       const batch = queryParamsList.slice(i, i + batchSize);
       const requests = batch.map(params => ({
