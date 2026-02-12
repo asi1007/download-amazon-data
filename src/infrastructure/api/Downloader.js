@@ -33,11 +33,11 @@ class Downloader {
     return data;
   }
 
-  fetchAll(queryParamsList, batchSize = 5) {
+  fetchAll(queryParamsList, batchSize = 2) {
     const results = [];
     for (let i = 0; i < queryParamsList.length; i += batchSize) {
       if (i > 0) {
-        Utilities.sleep(4000);
+        Utilities.sleep(6000);
       }
       const batch = queryParamsList.slice(i, i + batchSize);
       const requests = batch.map(params => ({
@@ -47,11 +47,33 @@ class Downloader {
         muteHttpExceptions: this.options.muteHttpExceptions
       }));
       console.log("Batch " + (Math.floor(i / batchSize) + 1) + ": " + batch.length + "件リクエスト");
-      const responses = UrlFetchApp.fetchAll(requests);
-      for (const response of responses) {
-        results.push(JSON.parse(response.getContentText()));
-      }
+      const batchResults = this._fetchBatchWithRetry(requests);
+      results.push(...batchResults);
     }
     return results;
+  }
+
+  _fetchBatchWithRetry(requests, maxRetries = 3) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const responses = UrlFetchApp.fetchAll(requests);
+        const results = [];
+        for (const response of responses) {
+          const text = response.getContentText();
+          if (text.includes("Bandwidth quota exceeded") || text.includes("QuotaExceeded")) {
+            throw new Error("Rate limit exceeded");
+          }
+          results.push(JSON.parse(text));
+        }
+        return results;
+      } catch (e) {
+        const waitTime = Math.pow(2, attempt) * 5000;
+        console.log("リトライ " + (attempt + 1) + "/" + maxRetries + " - " + waitTime + "ms待機: " + e.message);
+        if (attempt === maxRetries - 1) {
+          throw e;
+        }
+        Utilities.sleep(waitTime);
+      }
+    }
   }
 }
