@@ -1,7 +1,8 @@
 class UpdateSalesUseCase {
-  constructor(salesSheet, salesDownloader) {
+  constructor(salesSheet, salesDownloader, priceDownloader) {
     this.salesSheet = salesSheet;
     this.salesDownloader = salesDownloader;
+    this.priceDownloader = priceDownloader;
   }
 
   executeDailySales() {
@@ -10,6 +11,11 @@ class UpdateSalesUseCase {
 
     const asinSalesInfos = this.salesDownloader.getSalesInfosOf(asinList, "Day", startDate, endDate);
     this.salesSheet.writeSalesNums(asinSalesInfos);
+
+    if (this.priceDownloader) {
+      const asinToPrices = this.priceDownloader.getPricesOf(asinList);
+      this.salesSheet.writePrice(asinToPrices);
+    }
   }
 
   executeWeeklySales() {
