@@ -18,7 +18,7 @@ class PriceDownloader extends Downloader {
       queryParamsList.push([
         this.marketplaceID,
         "ItemType=Asin",
-        ...batch.map(asin => "Asins=" + asin)
+        "Asins=" + batch.join(",")
       ]);
     }
     const responses = this.fetchAll(queryParamsList);
