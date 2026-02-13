@@ -14,16 +14,30 @@ class TransactionDownloader extends Downloader {
     console.log(data);
     return transactionData;
   }
-}
 
-function downloadTransactions() {
-  const today = new Date();
-  const startDate = new Date();
-  const endDate = new Date();
-  startDate.setDate(today.getDate() - 4);
-  startDate.setHours(0, 0, 0, 0);
-  endDate.setDate(today.getDate() - 3);
-  endDate.setHours(0, 0, 0, 0);
-  const downloader = new TransactionDownloader('/finances/2024-06-19/transactions');
-  downloader.getTransactions(startDate, endDate);
+  getAllTransactions(startDay, endDay) {
+    const allTransactions = [];
+    const start = "postedAfter=" + startDay.toISOString();
+    const end = "postedBefore=" + endDay.toISOString();
+    let queryParams = [start, end];
+
+    while (true) {
+      this.setQueryParams(queryParams);
+      const data = this.getData();
+
+      const transactions = data.payload.transactions.filter(
+        transaction => transaction.transactionType === "Shipment" && transaction.transactionStatus === "RELEASED"
+      );
+      const transactionData = transactions.map(transaction => new Transaction(transaction));
+      allTransactions.push(...transactionData);
+
+      const nextToken = data.payload.nextToken;
+      if (!nextToken) {
+        break;
+      }
+      queryParams = [start, end, "nextToken=" + nextToken];
+    }
+
+    return allTransactions;
+  }
 }

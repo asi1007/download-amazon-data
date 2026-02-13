@@ -95,10 +95,13 @@ const sourceFiles = [
   '../src/infrastructure/sheets/InventorySheet.js',
   '../src/infrastructure/sheets/CostDataReader.js',
   '../src/infrastructure/sheets/AmazonAdDataReader.js',
+  '../src/infrastructure/sheets/TransactionSheet.js',
+  '../src/infrastructure/api/TransactionDownloader.js',
   '../src/usecases/UpdateSalesUseCase.js',
   '../src/usecases/UpdatePriceUseCase.js',
   '../src/usecases/UpdateInventoryUseCase.js',
   '../src/usecases/GetAdDataUseCase.js',
+  '../src/usecases/DownloadTransactionUseCase.js',
   '../src/main.js',
 ];
 
@@ -106,11 +109,12 @@ const gasExports = [
   'getSheetByName', 'getScriptProperty', 'getAuthToken',
   'Transaction', 'AmazonAdData', 'CostData', 'SalesInfo', 'InventorySummary',
   'Downloader', 'SalesDownloader', 'PriceDownloader', 'SKUDownloader', 'InventorySummariesDownloader',
-  'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet',
+  'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet', 'TransactionSheet',
+  'TransactionDownloader', 'DownloadTransactionUseCase',
   'UpdateSalesUseCase', 'UpdatePriceUseCase', 'UpdateInventoryUseCase', 'GetAdDataUseCase', 'UpdateWeeklyCostUseCase',
   'updateYesterdaySalesNum', 'updateLastWeekSalesNum', 'downloadPrices',
   'updateInventoryStatus', 'updateWeeklyCostSummary', 'getCostData',
-  'getAmazonAdData', 'getAmazonAdDataByDate', 'deleteOrderNumber',
+  'getAmazonAdData', 'getAmazonAdDataByDate', 'downloadTransactions', 'deleteOrderNumber',
 ];
 
 const loadSourceFiles = () => {
@@ -280,6 +284,211 @@ describe('CostData', () => {
       fixedFee: 10
     });
     expect(costData.getTotalUnitCost()).toBe(160);
+  });
+});
+
+describe('Transaction', () => {
+  test('constructor sets postedDate', () => {
+    const rawTransaction = {
+      transactionType: 'Shipment',
+      transactionStatus: 'RELEASED',
+      postedDate: '2025-01-20T10:00:00Z',
+      items: [{
+        contexts: [{ asin: 'B00EXAMPLE', quantityShipped: 2 }],
+        breakdowns: [
+          { breakdownAmount: 1000 },
+          { breakdownAmount: 100 },
+          { breakdownAmount: 0, breakdowns: [{ breakdownAmount: 200 }, { breakdownAmount: 300 }] },
+        ],
+      }],
+    };
+    const transaction = new global.Transaction(rawTransaction);
+    expect(transaction.postedDate).toBe('2025-01-20T10:00:00Z');
+    expect(transaction.items[0].asin).toBe('B00EXAMPLE');
+  });
+});
+
+describe('TransactionDownloader', () => {
+  let downloader;
+  beforeEach(() => {
+    global.UrlFetchApp.fetch.mockReturnValue({
+      getContentText: () => JSON.stringify({ access_token: 'test-token' })
+    });
+    downloader = new global.TransactionDownloader('/finances/2024-06-19/transactions');
+  });
+
+  test('getAllTransactions paginates through all pages', () => {
+    const page1Response = {
+      payload: {
+        nextToken: 'token123',
+        transactions: [{
+          transactionType: 'Shipment',
+          transactionStatus: 'RELEASED',
+          postedDate: '2025-01-20T10:00:00Z',
+          items: [{
+            contexts: [{ asin: 'B00EXAMPLE', quantityShipped: 1 }],
+            breakdowns: [
+              { breakdownAmount: 500 },
+              { breakdownAmount: 50 },
+              { breakdownAmount: 0, breakdowns: [{ breakdownAmount: 100 }, { breakdownAmount: 150 }] },
+            ],
+          }],
+        }],
+      },
+    };
+    const page2Response = {
+      payload: {
+        nextToken: null,
+        transactions: [{
+          transactionType: 'Shipment',
+          transactionStatus: 'RELEASED',
+          postedDate: '2025-01-21T10:00:00Z',
+          items: [{
+            contexts: [{ asin: 'B00EXAMPLF', quantityShipped: 2 }],
+            breakdowns: [
+              { breakdownAmount: 800 },
+              { breakdownAmount: 80 },
+              { breakdownAmount: 0, breakdowns: [{ breakdownAmount: 200 }, { breakdownAmount: 250 }] },
+            ],
+          }],
+        }],
+      },
+    };
+
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page1Response) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page2Response) });
+
+    downloader = new global.TransactionDownloader('/finances/2024-06-19/transactions');
+    const startDate = new Date('2025-01-20');
+    const endDate = new Date('2025-01-27');
+    const result = downloader.getAllTransactions(startDate, endDate);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].items[0].asin).toBe('B00EXAMPLE');
+    expect(result[1].items[0].asin).toBe('B00EXAMPLF');
+  });
+
+  test('getAllTransactions filters non-Shipment transactions', () => {
+    const response = {
+      payload: {
+        nextToken: null,
+        transactions: [
+          {
+            transactionType: 'Shipment',
+            transactionStatus: 'RELEASED',
+            postedDate: '2025-01-20T10:00:00Z',
+            items: [{
+              contexts: [{ asin: 'B00EXAMPLE', quantityShipped: 1 }],
+              breakdowns: [
+                { breakdownAmount: 500 },
+                { breakdownAmount: 50 },
+                { breakdownAmount: 0, breakdowns: [{ breakdownAmount: 100 }, { breakdownAmount: 150 }] },
+              ],
+            }],
+          },
+          {
+            transactionType: 'Refund',
+            transactionStatus: 'RELEASED',
+            postedDate: '2025-01-20T10:00:00Z',
+            items: [],
+          },
+        ],
+      },
+    };
+
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(response) });
+
+    downloader = new global.TransactionDownloader('/finances/2024-06-19/transactions');
+    const result = downloader.getAllTransactions(new Date('2025-01-20'), new Date('2025-01-27'));
+
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('Shipment');
+  });
+});
+
+describe('DownloadTransactionUseCase', () => {
+  test('aggregates transactions by ASIN and date', () => {
+    const mockTransactions = [
+      {
+        postedDate: '2025-01-20T00:00:00+09:00',
+        items: [
+          { asin: 'B00EXAMPLE', quantity: 2, sales: 1000, fees: 200, comission: 300 },
+          { asin: 'B00EXAMPLF', quantity: 1, sales: 500, fees: 100, comission: 150 },
+        ],
+      },
+      {
+        postedDate: '2025-01-20T12:00:00+09:00',
+        items: [
+          { asin: 'B00EXAMPLE', quantity: 1, sales: 500, fees: 100, comission: 150 },
+        ],
+      },
+      {
+        postedDate: '2025-01-21T00:00:00+09:00',
+        items: [
+          { asin: 'B00EXAMPLE', quantity: 3, sales: 1500, fees: 300, comission: 450 },
+        ],
+      },
+    ];
+
+    const mockDownloader = {
+      getAllTransactions: jest.fn().mockReturnValue(mockTransactions),
+    };
+    const writtenData = [];
+    const mockSheet = {
+      writeTransactionData: jest.fn().mockImplementation(rows => writtenData.push(...rows)),
+    };
+
+    const useCase = new global.DownloadTransactionUseCase(mockDownloader, mockSheet);
+    useCase.execute();
+
+    expect(mockDownloader.getAllTransactions).toHaveBeenCalledTimes(1);
+    expect(mockSheet.writeTransactionData).toHaveBeenCalledTimes(1);
+
+    const rows = mockSheet.writeTransactionData.mock.calls[0][0];
+    expect(rows).toHaveLength(3);
+
+    const exampleJan20 = rows.find(r => r[0] === '2025/01/20' && r[1] === 'B00EXAMPLE');
+    expect(exampleJan20[2]).toBe(3);
+    expect(exampleJan20[3]).toBe(1500);
+    expect(exampleJan20[4]).toBe(300);
+    expect(exampleJan20[5]).toBe(450);
+    expect(exampleJan20[6]).toBe(750);
+
+    const examplFJan20 = rows.find(r => r[0] === '2025/01/20' && r[1] === 'B00EXAMPLF');
+    expect(examplFJan20[2]).toBe(1);
+    expect(examplFJan20[3]).toBe(500);
+    expect(examplFJan20[6]).toBe(250);
+
+    const exampleJan21 = rows.find(r => r[0] === '2025/01/21' && r[1] === 'B00EXAMPLE');
+    expect(exampleJan21[2]).toBe(3);
+    expect(exampleJan21[6]).toBe(750);
+  });
+
+  test('rows are sorted by date then ASIN', () => {
+    const mockTransactions = [
+      {
+        postedDate: '2025-01-21T00:00:00+09:00',
+        items: [{ asin: 'B00EXAMPLF', quantity: 1, sales: 500, fees: 100, comission: 50 }],
+      },
+      {
+        postedDate: '2025-01-20T00:00:00+09:00',
+        items: [{ asin: 'B00EXAMPLE', quantity: 1, sales: 500, fees: 100, comission: 50 }],
+      },
+    ];
+
+    const mockDownloader = { getAllTransactions: jest.fn().mockReturnValue(mockTransactions) };
+    const mockSheet = { writeTransactionData: jest.fn() };
+
+    const useCase = new global.DownloadTransactionUseCase(mockDownloader, mockSheet);
+    useCase.execute();
+
+    const rows = mockSheet.writeTransactionData.mock.calls[0][0];
+    expect(rows[0][0]).toBe('2025/01/20');
+    expect(rows[1][0]).toBe('2025/01/21');
   });
 });
 

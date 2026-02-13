@@ -84,6 +84,18 @@ function getAmazonAdDataByDate(dateString) {
   return useCase.executeByDate(dateString);
 }
 
+function downloadTransactions() {
+  try {
+    const transactionDownloader = new TransactionDownloader('/finances/2024-06-19/transactions');
+    const transactionSheet = new TransactionSheet();
+    const useCase = new DownloadTransactionUseCase(transactionDownloader, transactionSheet);
+    useCase.execute();
+  } catch (error) {
+    Logger.log('エラーが発生しました: ' + error.toString());
+    throw error;
+  }
+}
+
 function deleteOrderNumber() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   const lastRow = sheet.getLastRow();

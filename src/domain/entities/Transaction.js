@@ -2,6 +2,7 @@ class Transaction {
   constructor(transaction) {
     this.type = transaction.transactionType;
     this.transactionStatus = transaction.transactionStatus;
+    this.postedDate = transaction.postedDate;
     this.transaction = transaction;
     this.items = transaction.items.map(item => new Item(item));
   }
