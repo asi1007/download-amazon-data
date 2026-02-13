@@ -1,14 +1,16 @@
 function updateYesterdaySalesNum() {
   const salesSheet = new SalesSheet("売上/日", "B2");
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
-  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader);
+  const priceDownloader = new PriceDownloader("/products/pricing/v0/competitivePrice");
+  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader, priceDownloader);
   useCase.executeDailySales();
 }
 
 function updateLastWeekSalesNum() {
   const salesSheet = new SalesSheet("売上/日", "B2");
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
-  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader);
+  const adDataReader = new AmazonAdDataReader();
+  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader, null, adDataReader);
   useCase.executeWeeklySales();
 }
 

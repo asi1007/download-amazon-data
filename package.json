@@ -1,6 +1,6 @@
 {
   "name": "amazon-sp-api-data-downloader",
-  "version": "2.4.2",
+  "version": "2.5.0",
   "description": "Amazon SP-API data downloader with tests",
   "main": "src/main.js",
   "scripts": {

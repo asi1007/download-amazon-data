@@ -1,7 +1,9 @@
 class UpdateSalesUseCase {
-  constructor(salesSheet, salesDownloader) {
+  constructor(salesSheet, salesDownloader, priceDownloader, adDataReader) {
     this.salesSheet = salesSheet;
     this.salesDownloader = salesDownloader;
+    this.priceDownloader = priceDownloader;
+    this.adDataReader = adDataReader;
   }
 
   executeDailySales() {
@@ -10,6 +12,11 @@ class UpdateSalesUseCase {
 
     const asinSalesInfos = this.salesDownloader.getSalesInfosOf(asinList, "Day", startDate, endDate);
     this.salesSheet.writeSalesNums(asinSalesInfos);
+
+    if (this.priceDownloader) {
+      const asinToPrices = this.priceDownloader.getPricesOf(asinList);
+      this.salesSheet.writePrice(asinToPrices);
+    }
   }
 
   executeWeeklySales() {
@@ -17,7 +24,8 @@ class UpdateSalesUseCase {
     const { startDate, endDate } = this._getWeeklyDateRange();
 
     const asinSalesInfos = this.salesDownloader.getSalesInfosOf(asinList, "Week", startDate, endDate);
-    const data = this._formatWeeklySalesData(asinSalesInfos, startDate, endDate);
+    const asinToAdSpend = this._getAdSpendByAsin(startDate);
+    const data = this._formatWeeklySalesData(asinSalesInfos, startDate, endDate, asinToAdSpend);
     this._writeToSalesDataSheet(data);
   }
 
@@ -39,7 +47,7 @@ class UpdateSalesUseCase {
     return { startDate, endDate };
   }
 
-  _formatWeeklySalesData(asinSalesInfos, startDate, endDate) {
+  _formatWeeklySalesData(asinSalesInfos, startDate, endDate, asinToAdSpend) {
     const asinInfos = Object.entries(asinSalesInfos);
     return asinInfos.map(row => [
       startDate,
@@ -47,8 +55,19 @@ class UpdateSalesUseCase {
       row[0],
       row[1].unitCount,
       row[1].totalSales.amount,
-      row[1].orderCount
+      row[1].orderCount,
+      asinToAdSpend[row[0]] || 0
     ]);
+  }
+
+  _getAdSpendByAsin(startDate) {
+    if (!this.adDataReader) return {};
+    const adDataList = this.adDataReader.fetchByPeriod(startDate);
+    const asinToAdSpend = {};
+    for (const adData of adDataList) {
+      asinToAdSpend[adData.asin] = adData.adSpend;
+    }
+    return asinToAdSpend;
   }
 
   _writeToSalesDataSheet(data) {
