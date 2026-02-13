@@ -1,8 +1,7 @@
 function updateYesterdaySalesNum() {
   const salesSheet = new SalesSheet("売上/日", "B2");
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
-  const priceDownloader = new PriceDownloader("/products/pricing/v0/competitivePrice");
-  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader, priceDownloader);
+  const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader);
   useCase.executeDailySales();
 }
 
