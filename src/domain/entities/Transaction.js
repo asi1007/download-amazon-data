@@ -17,7 +17,7 @@ class Item {
     this.sales = productCharge + tax;
 
     const amazonFees = item.breakdowns[2];
-    this.fees = amazonFees.breakdowns[0].breakdownAmount;
-    this.comission = amazonFees.breakdowns[1].breakdownAmount;
+    this.fees = amazonFees?.breakdowns?.[0]?.breakdownAmount ?? 0;
+    this.comission = amazonFees?.breakdowns?.[1]?.breakdownAmount ?? 0;
   }
 }
