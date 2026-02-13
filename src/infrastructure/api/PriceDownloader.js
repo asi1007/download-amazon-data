@@ -27,12 +27,15 @@ class PriceDownloader extends Downloader {
       if (!res.payload) continue;
       for (const item of res.payload) {
         const asin = item.ASIN;
-        const prices = item.Product.CompetitivePricing.CompetitivePrices;
-        if (prices.length > 0) {
+        const prices = item.Product
+          && item.Product.CompetitivePricing
+          && item.Product.CompetitivePricing.CompetitivePrices;
+        if (prices && prices.length > 0) {
           asintoPrices[asin] = prices[0].Price.LandedPrice.Amount;
         }
       }
     }
+    console.log(Object.keys(asintoPrices).length + "/" + asinList.length + "件の価格を取得");
     return asintoPrices;
   }
 }
