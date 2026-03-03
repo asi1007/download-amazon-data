@@ -21,6 +21,9 @@ class AmazonAdDataReader {
   }
 
   _getAllData() {
+    if (!this.sheet) {
+      return [];
+    }
     const lastRow = this.sheet.getLastRow();
     if (lastRow <= this.HEADER_ROW) {
       return [];

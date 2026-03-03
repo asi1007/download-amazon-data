@@ -71,7 +71,7 @@ class UpdateSalesUseCase {
   }
 
   _writeToSalesDataSheet(data) {
-    const dataSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("sales_data");
+    const dataSheet = getOrCreateSheet("sales_data");
     const lastRow = dataSheet.getLastRow();
     dataSheet.getRange(lastRow + 1, 1, data.length, data[0].length).setValues(data);
   }
