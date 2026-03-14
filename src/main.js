@@ -107,3 +107,23 @@ function deleteOrderNumber() {
     }
   }
 }
+
+function updateRealtimeSales() {
+  try {
+    const realtimeSalesSheet = new RealtimeSalesSheet();
+    const ordersDownloader = new OrdersDownloader('/orders/v0/orders');
+    const useCase = new UpdateRealtimeSalesUseCase(realtimeSalesSheet, ordersDownloader);
+    useCase.execute();
+  } catch (error) {
+    Logger.log('エラーが発生しました: ' + error.toString());
+    throw error;
+  }
+}
+
+function setupRealtimeSalesTrigger() {
+  ScriptApp.newTrigger('updateRealtimeSales')
+    .timeBased()
+    .everyMinutes(10)
+    .create();
+  Logger.log('リアルタイム売上更新トリガーを設定しました（10分間隔）');
+}

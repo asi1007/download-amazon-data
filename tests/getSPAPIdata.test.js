@@ -75,6 +75,16 @@ global.console = {
   log: jest.fn(),
 };
 
+global.ScriptApp = {
+  newTrigger: jest.fn().mockReturnValue({
+    timeBased: jest.fn().mockReturnValue({
+      everyMinutes: jest.fn().mockReturnValue({
+        create: jest.fn(),
+      }),
+    }),
+  }),
+};
+
 const fs = require('fs');
 const path = require('path');
 
@@ -107,6 +117,7 @@ const sourceFiles = [
   '../src/usecases/UpdateInventoryUseCase.js',
   '../src/usecases/GetAdDataUseCase.js',
   '../src/usecases/DownloadTransactionUseCase.js',
+  '../src/usecases/UpdateRealtimeSalesUseCase.js',
   '../src/main.js',
 ];
 
@@ -117,10 +128,11 @@ const gasExports = [
   'Downloader', 'SalesDownloader', 'PriceDownloader', 'SKUDownloader', 'InventorySummariesDownloader',
   'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet', 'RealtimeSalesSheet', 'TransactionSheet',
   'TransactionDownloader', 'OrdersDownloader', 'DownloadTransactionUseCase',
-  'UpdateSalesUseCase', 'UpdatePriceUseCase', 'UpdateInventoryUseCase', 'GetAdDataUseCase', 'UpdateWeeklyCostUseCase',
+  'UpdateSalesUseCase', 'UpdatePriceUseCase', 'UpdateInventoryUseCase', 'GetAdDataUseCase', 'UpdateWeeklyCostUseCase', 'UpdateRealtimeSalesUseCase',
   'updateYesterdaySalesNum', 'updateLastWeekSalesNum', 'downloadPrices',
   'updateInventoryStatus', 'updateWeeklyCostSummary', 'getCostData',
   'getAmazonAdData', 'getAmazonAdDataByDate', 'downloadTransactions', 'deleteOrderNumber',
+  'updateRealtimeSales', 'setupRealtimeSalesTrigger',
 ];
 
 const loadSourceFiles = () => {
@@ -777,5 +789,145 @@ describe('RealtimeSalesSheet', () => {
       [3, 9000],
       [0, 0],
     ]);
+  });
+});
+
+describe('UpdateRealtimeSalesUseCase', () => {
+  test('aggregates orders by ASIN and writes to sheet', () => {
+    const mockOrders = [
+      {
+        orderId: '503-001',
+        orderStatus: 'Shipped',
+        purchaseDate: '2026-03-15T10:00:00Z',
+        items: [
+          { asin: 'B00EXAMPLE', quantityOrdered: 2, itemPriceAmount: 3000 },
+          { asin: 'B00EXAMPLF', quantityOrdered: 1, itemPriceAmount: 1500 },
+        ],
+        isCanceled: () => false,
+      },
+      {
+        orderId: '503-002',
+        orderStatus: 'Shipped',
+        purchaseDate: '2026-03-15T12:00:00Z',
+        items: [
+          { asin: 'B00EXAMPLE', quantityOrdered: 1, itemPriceAmount: 1500 },
+        ],
+        isCanceled: () => false,
+      },
+    ];
+
+    const mockDownloader = {
+      getOrdersWithItems: jest.fn().mockReturnValue(mockOrders),
+    };
+    const writtenSalesMap = {};
+    const mockSheet = {
+      getAsinList: jest.fn().mockReturnValue(['B00EXAMPLE', 'B00EXAMPLF', 'B00EXAMPLG']),
+      writeRealtimeSales: jest.fn().mockImplementation(salesMap => {
+        Object.assign(writtenSalesMap, salesMap);
+      }),
+    };
+
+    const useCase = new global.UpdateRealtimeSalesUseCase(mockSheet, mockDownloader);
+    useCase.execute();
+
+    expect(mockDownloader.getOrdersWithItems).toHaveBeenCalledTimes(1);
+    expect(mockSheet.writeRealtimeSales).toHaveBeenCalledTimes(1);
+
+    const salesMap = mockSheet.writeRealtimeSales.mock.calls[0][0];
+    expect(salesMap['B00EXAMPLE'].unitCount).toBe(3);
+    expect(salesMap['B00EXAMPLE'].totalAmount).toBe(4500);
+    expect(salesMap['B00EXAMPLF'].unitCount).toBe(1);
+    expect(salesMap['B00EXAMPLF'].totalAmount).toBe(1500);
+    expect(salesMap['B00EXAMPLG'].unitCount).toBe(0);
+    expect(salesMap['B00EXAMPLG'].totalAmount).toBe(0);
+  });
+
+  test('excludes Canceled orders from aggregation', () => {
+    const mockOrders = [
+      {
+        orderId: '503-001',
+        orderStatus: 'Shipped',
+        items: [{ asin: 'B00EXAMPLE', quantityOrdered: 2, itemPriceAmount: 3000 }],
+        isCanceled: () => false,
+      },
+      {
+        orderId: '503-002',
+        orderStatus: 'Canceled',
+        items: [{ asin: 'B00EXAMPLE', quantityOrdered: 5, itemPriceAmount: 7500 }],
+        isCanceled: () => true,
+      },
+    ];
+
+    const mockDownloader = { getOrdersWithItems: jest.fn().mockReturnValue(mockOrders) };
+    const mockSheet = {
+      getAsinList: jest.fn().mockReturnValue(['B00EXAMPLE']),
+      writeRealtimeSales: jest.fn(),
+    };
+
+    const useCase = new global.UpdateRealtimeSalesUseCase(mockSheet, mockDownloader);
+    useCase.execute();
+
+    const salesMap = mockSheet.writeRealtimeSales.mock.calls[0][0];
+    expect(salesMap['B00EXAMPLE'].unitCount).toBe(2);
+    expect(salesMap['B00EXAMPLE'].totalAmount).toBe(3000);
+  });
+
+  test('only aggregates ASINs present in sheet', () => {
+    const mockOrders = [
+      {
+        orderId: '503-001',
+        orderStatus: 'Shipped',
+        items: [
+          { asin: 'B00EXAMPLE', quantityOrdered: 1, itemPriceAmount: 1500 },
+          { asin: 'B00UNKNOWN', quantityOrdered: 3, itemPriceAmount: 9000 },
+        ],
+        isCanceled: () => false,
+      },
+    ];
+
+    const mockDownloader = { getOrdersWithItems: jest.fn().mockReturnValue(mockOrders) };
+    const mockSheet = {
+      getAsinList: jest.fn().mockReturnValue(['B00EXAMPLE']),
+      writeRealtimeSales: jest.fn(),
+    };
+
+    const useCase = new global.UpdateRealtimeSalesUseCase(mockSheet, mockDownloader);
+    useCase.execute();
+
+    const salesMap = mockSheet.writeRealtimeSales.mock.calls[0][0];
+    expect(salesMap['B00EXAMPLE'].unitCount).toBe(1);
+    expect(salesMap['B00UNKNOWN']).toBeUndefined();
+  });
+
+  test('handles zero orders gracefully', () => {
+    const mockDownloader = { getOrdersWithItems: jest.fn().mockReturnValue([]) };
+    const mockSheet = {
+      getAsinList: jest.fn().mockReturnValue(['B00EXAMPLE']),
+      writeRealtimeSales: jest.fn(),
+    };
+
+    const useCase = new global.UpdateRealtimeSalesUseCase(mockSheet, mockDownloader);
+    useCase.execute();
+
+    const salesMap = mockSheet.writeRealtimeSales.mock.calls[0][0];
+    expect(salesMap['B00EXAMPLE'].unitCount).toBe(0);
+    expect(salesMap['B00EXAMPLE'].totalAmount).toBe(0);
+  });
+
+  test('skips sheet write when API fails', () => {
+    const mockDownloader = {
+      getOrdersWithItems: jest.fn().mockImplementation(() => {
+        throw new Error('API error');
+      }),
+    };
+    const mockSheet = {
+      getAsinList: jest.fn().mockReturnValue(['B00EXAMPLE']),
+      writeRealtimeSales: jest.fn(),
+    };
+
+    const useCase = new global.UpdateRealtimeSalesUseCase(mockSheet, mockDownloader);
+    useCase.execute();
+
+    expect(mockSheet.writeRealtimeSales).not.toHaveBeenCalled();
   });
 });
