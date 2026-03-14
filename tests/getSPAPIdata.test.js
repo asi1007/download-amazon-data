@@ -85,6 +85,9 @@ const sourceFiles = [
   '../src/domain/value_objects/CostData.js',
   '../src/domain/value_objects/SalesInfo.js',
   '../src/domain/value_objects/InventorySummary.js',
+  '../src/domain/value_objects/RealtimeSalesResult.js',
+  '../src/domain/entities/Order.js',
+  '../src/domain/repositories/OrderRepository.js',
   '../src/infrastructure/api/AuthService.js',
   '../src/infrastructure/api/Downloader.js',
   '../src/infrastructure/api/SalesDownloader.js',
@@ -107,7 +110,8 @@ const sourceFiles = [
 
 const gasExports = [
   'getSheetByName', 'getScriptProperty', 'getAuthToken',
-  'Transaction', 'AmazonAdData', 'CostData', 'SalesInfo', 'InventorySummary',
+  'Transaction', 'AmazonAdData', 'CostData', 'SalesInfo', 'InventorySummary', 'RealtimeSalesResult',
+  'Order', 'OrderItem', 'OrderRepository',
   'Downloader', 'SalesDownloader', 'PriceDownloader', 'SKUDownloader', 'InventorySummariesDownloader',
   'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet', 'TransactionSheet',
   'TransactionDownloader', 'DownloadTransactionUseCase',
@@ -499,5 +503,100 @@ describe('AmazonAdData', () => {
     expect(adData.asin).toBe('B00EXAMPLE');
     expect(adData.adSpend).toBe(100);
     expect(adData.acos).toBe(20);
+  });
+});
+
+describe('Order', () => {
+  test('constructor maps API response to properties', () => {
+    const apiResponse = {
+      AmazonOrderId: '503-1234567-1234567',
+      OrderStatus: 'Shipped',
+      PurchaseDate: '2026-03-15T10:30:00Z',
+    };
+    const orderItems = [
+      {
+        ASIN: 'B00EXAMPLE',
+        QuantityOrdered: 2,
+        ItemPrice: { CurrencyCode: 'JPY', Amount: '3000' },
+      },
+      {
+        ASIN: 'B00EXAMPLF',
+        QuantityOrdered: 1,
+        ItemPrice: { CurrencyCode: 'JPY', Amount: '1500' },
+      },
+    ];
+
+    const order = new global.Order(apiResponse, orderItems);
+
+    expect(order.orderId).toBe('503-1234567-1234567');
+    expect(order.orderStatus).toBe('Shipped');
+    expect(order.purchaseDate).toBe('2026-03-15T10:30:00Z');
+    expect(order.items).toHaveLength(2);
+    expect(order.items[0].asin).toBe('B00EXAMPLE');
+    expect(order.items[0].quantityOrdered).toBe(2);
+    expect(order.items[0].itemPriceAmount).toBe(3000);
+    expect(order.items[1].asin).toBe('B00EXAMPLF');
+    expect(order.items[1].quantityOrdered).toBe(1);
+    expect(order.items[1].itemPriceAmount).toBe(1500);
+  });
+
+  test('isCanceled returns true for Canceled orders', () => {
+    const apiResponse = {
+      AmazonOrderId: '503-0000000-0000000',
+      OrderStatus: 'Canceled',
+      PurchaseDate: '2026-03-15T10:30:00Z',
+    };
+    const order = new global.Order(apiResponse, []);
+    expect(order.isCanceled()).toBe(true);
+  });
+
+  test('isCanceled returns false for Shipped orders', () => {
+    const apiResponse = {
+      AmazonOrderId: '503-0000000-0000000',
+      OrderStatus: 'Shipped',
+      PurchaseDate: '2026-03-15T10:30:00Z',
+    };
+    const order = new global.Order(apiResponse, []);
+    expect(order.isCanceled()).toBe(false);
+  });
+
+  test('handles missing ItemPrice gracefully', () => {
+    const apiResponse = {
+      AmazonOrderId: '503-0000000-0000000',
+      OrderStatus: 'Shipped',
+      PurchaseDate: '2026-03-15T10:30:00Z',
+    };
+    const orderItems = [
+      {
+        ASIN: 'B00EXAMPLE',
+        QuantityOrdered: 1,
+        ItemPrice: null,
+      },
+    ];
+    const order = new global.Order(apiResponse, orderItems);
+    expect(order.items[0].itemPriceAmount).toBe(0);
+  });
+});
+
+describe('RealtimeSalesResult', () => {
+  test('constructor sets properties', () => {
+    const result = new global.RealtimeSalesResult('B00EXAMPLE', 5, 15000);
+    expect(result.asin).toBe('B00EXAMPLE');
+    expect(result.unitCount).toBe(5);
+    expect(result.totalAmount).toBe(15000);
+  });
+
+  test('default values are zero', () => {
+    const result = new global.RealtimeSalesResult('B00EXAMPLE');
+    expect(result.unitCount).toBe(0);
+    expect(result.totalAmount).toBe(0);
+  });
+
+  test('addSale accumulates values', () => {
+    const result = new global.RealtimeSalesResult('B00EXAMPLE');
+    result.addSale(2, 3000);
+    result.addSale(1, 1500);
+    expect(result.unitCount).toBe(3);
+    expect(result.totalAmount).toBe(4500);
   });
 });
