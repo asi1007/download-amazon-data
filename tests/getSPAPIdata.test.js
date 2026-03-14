@@ -98,8 +98,10 @@ const sourceFiles = [
   '../src/infrastructure/sheets/InventorySheet.js',
   '../src/infrastructure/sheets/CostDataReader.js',
   '../src/infrastructure/sheets/AmazonAdDataReader.js',
+  '../src/infrastructure/sheets/RealtimeSalesSheet.js',
   '../src/infrastructure/sheets/TransactionSheet.js',
   '../src/infrastructure/api/TransactionDownloader.js',
+  '../src/infrastructure/api/OrdersDownloader.js',
   '../src/usecases/UpdateSalesUseCase.js',
   '../src/usecases/UpdatePriceUseCase.js',
   '../src/usecases/UpdateInventoryUseCase.js',
@@ -113,8 +115,8 @@ const gasExports = [
   'Transaction', 'AmazonAdData', 'CostData', 'SalesInfo', 'InventorySummary', 'RealtimeSalesResult',
   'Order', 'OrderItem', 'OrderRepository',
   'Downloader', 'SalesDownloader', 'PriceDownloader', 'SKUDownloader', 'InventorySummariesDownloader',
-  'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet', 'TransactionSheet',
-  'TransactionDownloader', 'DownloadTransactionUseCase',
+  'SalesSheet', 'InventorySheet', 'CostDataReader', 'AmazonAdDataReader', 'WeeklyCostSheet', 'RealtimeSalesSheet', 'TransactionSheet',
+  'TransactionDownloader', 'OrdersDownloader', 'DownloadTransactionUseCase',
   'UpdateSalesUseCase', 'UpdatePriceUseCase', 'UpdateInventoryUseCase', 'GetAdDataUseCase', 'UpdateWeeklyCostUseCase',
   'updateYesterdaySalesNum', 'updateLastWeekSalesNum', 'downloadPrices',
   'updateInventoryStatus', 'updateWeeklyCostSummary', 'getCostData',
@@ -598,5 +600,182 @@ describe('RealtimeSalesResult', () => {
     result.addSale(1, 1500);
     expect(result.unitCount).toBe(3);
     expect(result.totalAmount).toBe(4500);
+  });
+});
+
+describe('OrdersDownloader', () => {
+  let downloader;
+
+  beforeEach(() => {
+    global.UrlFetchApp.fetch.mockReturnValue({
+      getContentText: () => JSON.stringify({ access_token: 'test-token' })
+    });
+    downloader = new global.OrdersDownloader('/orders/v0/orders');
+  });
+
+  test('searchOrders returns orders with pagination', () => {
+    const page1Response = {
+      payload: {
+        Orders: [
+          { AmazonOrderId: '503-001', OrderStatus: 'Shipped', PurchaseDate: '2026-03-15T10:00:00Z' },
+          { AmazonOrderId: '503-002', OrderStatus: 'Unshipped', PurchaseDate: '2026-03-15T11:00:00Z' },
+        ],
+        NextToken: 'token123',
+      },
+    };
+    const page2Response = {
+      payload: {
+        Orders: [
+          { AmazonOrderId: '503-003', OrderStatus: 'Shipped', PurchaseDate: '2026-03-15T12:00:00Z' },
+        ],
+        NextToken: null,
+      },
+    };
+
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page1Response) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page2Response) });
+
+    downloader = new global.OrdersDownloader('/orders/v0/orders');
+    const startDate = new Date('2026-03-15T00:00:00+09:00');
+    const orders = downloader.searchOrders(startDate);
+
+    expect(orders).toHaveLength(3);
+    expect(orders[0].AmazonOrderId).toBe('503-001');
+    expect(orders[2].AmazonOrderId).toBe('503-003');
+  });
+
+  test('searchOrders handles single page response', () => {
+    const response = {
+      payload: {
+        Orders: [
+          { AmazonOrderId: '503-001', OrderStatus: 'Shipped', PurchaseDate: '2026-03-15T10:00:00Z' },
+        ],
+        NextToken: null,
+      },
+    };
+
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(response) });
+
+    downloader = new global.OrdersDownloader('/orders/v0/orders');
+    const startDate = new Date('2026-03-15T00:00:00+09:00');
+    const orders = downloader.searchOrders(startDate);
+
+    expect(orders).toHaveLength(1);
+  });
+
+  test('getOrderItemsForOrders fetches items for each order via fetchAll', () => {
+    const orderIds = ['503-001', '503-002'];
+    const mockResponses = [
+      { getContentText: () => JSON.stringify({
+        payload: { OrderItems: [
+          { ASIN: 'B00EXAMPLE', QuantityOrdered: 2, ItemPrice: { CurrencyCode: 'JPY', Amount: '3000' } },
+        ] }
+      }) },
+      { getContentText: () => JSON.stringify({
+        payload: { OrderItems: [
+          { ASIN: 'B00EXAMPLF', QuantityOrdered: 1, ItemPrice: { CurrencyCode: 'JPY', Amount: '1500' } },
+        ] }
+      }) },
+    ];
+    global.UrlFetchApp.fetchAll.mockReturnValue(mockResponses);
+
+    const result = downloader.getOrderItemsForOrders(orderIds);
+
+    expect(result['503-001']).toHaveLength(1);
+    expect(result['503-001'][0].ASIN).toBe('B00EXAMPLE');
+    expect(result['503-002']).toHaveLength(1);
+    expect(result['503-002'][0].ASIN).toBe('B00EXAMPLF');
+  });
+
+  test('getOrdersWithItems returns Order entities', () => {
+    const ordersResponse = {
+      payload: {
+        Orders: [
+          { AmazonOrderId: '503-001', OrderStatus: 'Shipped', PurchaseDate: '2026-03-15T10:00:00Z' },
+        ],
+        NextToken: null,
+      },
+    };
+    const itemsResponse = [
+      { getContentText: () => JSON.stringify({
+        payload: { OrderItems: [
+          { ASIN: 'B00EXAMPLE', QuantityOrdered: 2, ItemPrice: { CurrencyCode: 'JPY', Amount: '3000' } },
+        ] }
+      }) },
+    ];
+
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(ordersResponse) });
+    global.UrlFetchApp.fetchAll.mockReturnValue(itemsResponse);
+
+    downloader = new global.OrdersDownloader('/orders/v0/orders');
+    const startDate = new Date('2026-03-15T00:00:00+09:00');
+    const orders = downloader.getOrdersWithItems(startDate);
+
+    expect(orders).toHaveLength(1);
+    expect(orders[0].orderId).toBe('503-001');
+    expect(orders[0].items[0].asin).toBe('B00EXAMPLE');
+    expect(orders[0].items[0].quantityOrdered).toBe(2);
+    expect(orders[0].items[0].itemPriceAmount).toBe(3000);
+  });
+});
+
+describe('RealtimeSalesSheet', () => {
+  let sheet;
+
+  beforeEach(() => {
+    sheet = new global.RealtimeSalesSheet();
+  });
+
+  test('getAsinList reads ASINs from column A skipping header', () => {
+    const mockSheet = global.SpreadsheetApp.openById().getSheetByName();
+    mockSheet.getLastRow.mockReturnValue(4);
+    mockSheet.getRange.mockReturnValue({
+      getValues: jest.fn().mockReturnValue([
+        ['ASIN'],
+        ['B00EXAMPLE'],
+        ['B00EXAMPLF'],
+        ['B00EXAMPLG'],
+      ]),
+    });
+
+    const asinList = sheet.getAsinList();
+
+    expect(asinList).toEqual(['B00EXAMPLE', 'B00EXAMPLF', 'B00EXAMPLG']);
+  });
+
+  test('writeRealtimeSales writes unit count and amount to columns B and C', () => {
+    const mockSetValues = jest.fn();
+    const mockSheet = global.SpreadsheetApp.openById().getSheetByName();
+    mockSheet.getLastRow.mockReturnValue(4);
+    mockSheet.getRange.mockReturnValue({
+      getValues: jest.fn().mockReturnValue([
+        ['ASIN'],
+        ['B00EXAMPLE'],
+        ['B00EXAMPLF'],
+        ['B00EXAMPLG'],
+      ]),
+      setValues: mockSetValues,
+    });
+
+    const salesMap = {
+      'B00EXAMPLE': { unitCount: 5, totalAmount: 15000 },
+      'B00EXAMPLF': { unitCount: 3, totalAmount: 9000 },
+      'B00EXAMPLG': { unitCount: 0, totalAmount: 0 },
+    };
+
+    sheet.getAsinList();
+    sheet.writeRealtimeSales(salesMap);
+
+    expect(mockSetValues).toHaveBeenCalledWith([
+      [5, 15000],
+      [3, 9000],
+      [0, 0],
+    ]);
   });
 });
