@@ -14,3 +14,14 @@ coverage/
 # Config files with secrets
 config.js
 .env
+service_account.json
+
+# Python
+*.egg-info/
+__pycache__/
+
+# Logs
+cron.log
+
+# Debug scripts
+debug_*.py

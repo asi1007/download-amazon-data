@@ -1,5 +1,5 @@
 class OrdersDownloader extends Downloader {
-  searchOrders(startDate) {
+  getOrdersWithItems(startDate) {
     const allOrders = [];
     const createdAfter = "CreatedAfter=" + startDate.toISOString();
     const marketplaceIds = "MarketplaceIds=" + "A1VC38T7YXB528";
@@ -8,22 +8,29 @@ class OrdersDownloader extends Downloader {
     while (true) {
       this.setQueryParams(queryParams);
       const data = this.getData();
-      const orders = data.payload.Orders;
-      allOrders.push(...orders);
+      const pageOrders = data.payload.Orders;
+
+      if (pageOrders.length > 0) {
+        const orderIds = pageOrders.map(o => o.AmazonOrderId);
+        const itemsMap = this._fetchOrderItemsBatch(orderIds);
+        for (const rawOrder of pageOrders) {
+          const items = itemsMap[rawOrder.AmazonOrderId] || [];
+          allOrders.push(new Order(rawOrder, items));
+        }
+      }
 
       const nextToken = data.payload.NextToken;
       if (!nextToken) {
         break;
       }
-      queryParams = [createdAfter, marketplaceIds, "NextToken=" + nextToken];
+      queryParams = [createdAfter, marketplaceIds, "NextToken=" + encodeURIComponent(nextToken)];
     }
 
     return allOrders;
   }
 
-  getOrderItemsForOrders(orderIds) {
+  _fetchOrderItemsBatch(orderIds) {
     const orderItemsUrl = this.SP_API_URL + "/orders/v0/orders/";
-
     const requests = orderIds.map(orderId => ({
       url: orderItemsUrl + orderId + "/orderItems?" + this.marketplaceIDs,
       method: this.options.method,
@@ -31,13 +38,20 @@ class OrdersDownloader extends Downloader {
       muteHttpExceptions: this.options.muteHttpExceptions,
     }));
 
-    const batchSize = 10;
+    const batchSize = 5;
+    const burstLimit = 30;
     const allResults = {};
 
     for (let i = 0; i < requests.length; i += batchSize) {
-      if (i > 0) {
-        Utilities.sleep(6000);
+      const requestsSoFar = i;
+      if (requestsSoFar === 0) {
+        Utilities.sleep(2000);
+      } else if (requestsSoFar < burstLimit) {
+        Utilities.sleep(3000);
+      } else {
+        Utilities.sleep(15000);
       }
+
       const batch = requests.slice(i, i + batchSize);
       const batchOrderIds = orderIds.slice(i, i + batchSize);
       const responses = this._fetchBatchWithRetry(batch);
@@ -48,21 +62,5 @@ class OrdersDownloader extends Downloader {
     }
 
     return allResults;
-  }
-
-  getOrdersWithItems(startDate) {
-    const rawOrders = this.searchOrders(startDate);
-    const orderIds = rawOrders.map(order => order.AmazonOrderId);
-
-    if (orderIds.length === 0) {
-      return [];
-    }
-
-    const orderItemsMap = this.getOrderItemsForOrders(orderIds);
-
-    return rawOrders.map(rawOrder => {
-      const items = orderItemsMap[rawOrder.AmazonOrderId] || [];
-      return new Order(rawOrder, items);
-    });
   }
 }

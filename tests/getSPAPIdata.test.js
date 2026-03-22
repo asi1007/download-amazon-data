@@ -625,7 +625,7 @@ describe('OrdersDownloader', () => {
     downloader = new global.OrdersDownloader('/orders/v0/orders');
   });
 
-  test('searchOrders returns orders with pagination', () => {
+  test('getOrdersWithItems with pagination fetches items per page', () => {
     const page1Response = {
       payload: {
         Orders: [
@@ -643,45 +643,7 @@ describe('OrdersDownloader', () => {
         NextToken: null,
       },
     };
-
-    global.UrlFetchApp.fetch
-      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
-      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page1Response) })
-      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page2Response) });
-
-    downloader = new global.OrdersDownloader('/orders/v0/orders');
-    const startDate = new Date('2026-03-15T00:00:00+09:00');
-    const orders = downloader.searchOrders(startDate);
-
-    expect(orders).toHaveLength(3);
-    expect(orders[0].AmazonOrderId).toBe('503-001');
-    expect(orders[2].AmazonOrderId).toBe('503-003');
-  });
-
-  test('searchOrders handles single page response', () => {
-    const response = {
-      payload: {
-        Orders: [
-          { AmazonOrderId: '503-001', OrderStatus: 'Shipped', PurchaseDate: '2026-03-15T10:00:00Z' },
-        ],
-        NextToken: null,
-      },
-    };
-
-    global.UrlFetchApp.fetch
-      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
-      .mockReturnValueOnce({ getContentText: () => JSON.stringify(response) });
-
-    downloader = new global.OrdersDownloader('/orders/v0/orders');
-    const startDate = new Date('2026-03-15T00:00:00+09:00');
-    const orders = downloader.searchOrders(startDate);
-
-    expect(orders).toHaveLength(1);
-  });
-
-  test('getOrderItemsForOrders fetches items for each order via fetchAll', () => {
-    const orderIds = ['503-001', '503-002'];
-    const mockResponses = [
+    const page1Items = [
       { getContentText: () => JSON.stringify({
         payload: { OrderItems: [
           { ASIN: 'B00EXAMPLE', QuantityOrdered: 2, ItemPrice: { CurrencyCode: 'JPY', Amount: '3000' } },
@@ -693,17 +655,35 @@ describe('OrdersDownloader', () => {
         ] }
       }) },
     ];
-    global.UrlFetchApp.fetchAll.mockReturnValue(mockResponses);
+    const page2Items = [
+      { getContentText: () => JSON.stringify({
+        payload: { OrderItems: [
+          { ASIN: 'B00EXAMPLG', QuantityOrdered: 3, ItemPrice: { CurrencyCode: 'JPY', Amount: '4500' } },
+        ] }
+      }) },
+    ];
 
-    const result = downloader.getOrderItemsForOrders(orderIds);
+    global.UrlFetchApp.fetch
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify({ access_token: 'test-token' }) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page1Response) })
+      .mockReturnValueOnce({ getContentText: () => JSON.stringify(page2Response) });
+    global.UrlFetchApp.fetchAll
+      .mockReturnValueOnce(page1Items)
+      .mockReturnValueOnce(page2Items);
 
-    expect(result['503-001']).toHaveLength(1);
-    expect(result['503-001'][0].ASIN).toBe('B00EXAMPLE');
-    expect(result['503-002']).toHaveLength(1);
-    expect(result['503-002'][0].ASIN).toBe('B00EXAMPLF');
+    downloader = new global.OrdersDownloader('/orders/v0/orders');
+    const startDate = new Date('2026-03-15T00:00:00+09:00');
+    const orders = downloader.getOrdersWithItems(startDate);
+
+    expect(orders).toHaveLength(3);
+    expect(orders[0].orderId).toBe('503-001');
+    expect(orders[0].items[0].asin).toBe('B00EXAMPLE');
+    expect(orders[2].orderId).toBe('503-003');
+    expect(orders[2].items[0].asin).toBe('B00EXAMPLG');
+    expect(global.UrlFetchApp.fetchAll).toHaveBeenCalledTimes(2);
   });
 
-  test('getOrdersWithItems returns Order entities', () => {
+  test('getOrdersWithItems single page returns Order entities', () => {
     const ordersResponse = {
       payload: {
         Orders: [

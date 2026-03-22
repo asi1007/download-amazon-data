@@ -61,6 +61,7 @@ class Downloader {
         for (const response of responses) {
           const text = response.getContentText();
           if (text.includes("Bandwidth quota exceeded") || text.includes("QuotaExceeded")) {
+            console.log("Rate limit response: " + text.substring(0, 500));
             throw new Error("Rate limit exceeded");
           }
           results.push(JSON.parse(text));
