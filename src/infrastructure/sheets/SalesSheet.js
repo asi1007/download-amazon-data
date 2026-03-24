@@ -46,15 +46,19 @@ class SalesSheet {
 
     const values = this.asinRange.getValues();
     const writeData = [];
+    let totalAmount = 0;
 
     for (let i = 2; i < values.length; i++) {
       const asin = values[i - 1][0];
       if (this.asinList.includes(asin)) {
         writeData.push([salesNums[asin].unitCount]);
+        totalAmount += salesNums[asin].totalSales.amount;
       } else {
         writeData.push([""]);
       }
     }
+
+    this.sheet.getRange(3, this.START_COLUMN).setValue(totalAmount);
 
     if (writeData.length > 0) {
       this.sheet.getRange(2, this.START_COLUMN, writeData.length, 1).setValues(writeData);

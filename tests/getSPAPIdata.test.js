@@ -911,3 +911,69 @@ describe('UpdateRealtimeSalesUseCase', () => {
     expect(mockSheet.writeRealtimeSales).not.toHaveBeenCalled();
   });
 });
+
+describe('SalesSheet writeSalesNums', () => {
+  let salesSheet;
+  let mockSetValue;
+  let mockSheet;
+
+  beforeEach(() => {
+    mockSetValue = jest.fn();
+    mockSheet = {
+      getLastRow: jest.fn().mockReturnValue(7),
+      getRange: jest.fn().mockReturnValue({
+        getValues: jest.fn().mockReturnValue([
+          ['header'],
+          ['B00EXAMPLE'],
+          ['B00EXAMPLF'],
+          ['B00EXAMPLG'],
+          ['header2'],
+          ['B00EXAMPLH'],
+          ['B00EXAMPLI'],
+        ]),
+        getValue: jest.fn().mockReturnValue(3),
+        setValue: mockSetValue,
+        setValues: jest.fn(),
+        setNumberFormat: jest.fn(),
+      }),
+      insertColumnBefore: jest.fn(),
+      getFilter: jest.fn().mockReturnValue(null),
+    };
+
+    global.SpreadsheetApp.openById.mockReturnValue({
+      getSheetByName: jest.fn().mockReturnValue(mockSheet),
+    });
+
+    global.Utilities = {
+      formatDate: jest.fn().mockReturnValue('2026/03/24'),
+    };
+
+    salesSheet = new global.SalesSheet('売上/日', 'B2');
+    salesSheet.asinList = ['B00EXAMPLE', 'B00EXAMPLF', 'B00EXAMPLG', 'B00EXAMPLH', 'B00EXAMPLI'];
+    salesSheet.asinToRow = {
+      'B00EXAMPLE': 2,
+      'B00EXAMPLF': 3,
+      'B00EXAMPLG': 4,
+      'B00EXAMPLH': 6,
+      'B00EXAMPLI': 7,
+    };
+  });
+
+  test('writeSalesNums writes total sales amount to row 3', () => {
+    const salesNums = {
+      'B00EXAMPLE': { unitCount: 2, totalSales: { amount: 6000 }, orderCount: 1 },
+      'B00EXAMPLF': { unitCount: 1, totalSales: { amount: 3000 }, orderCount: 1 },
+      'B00EXAMPLG': { unitCount: 0, totalSales: { amount: 0 }, orderCount: 0 },
+      'B00EXAMPLH': { unitCount: 3, totalSales: { amount: 4500 }, orderCount: 2 },
+      'B00EXAMPLI': { unitCount: 0, totalSales: { amount: 0 }, orderCount: 0 },
+    };
+
+    salesSheet.writeSalesNums(salesNums);
+
+    const row3Calls = mockSheet.getRange.mock.calls.filter(
+      call => call[0] === 3 && call[1] === 3
+    );
+    expect(row3Calls.length).toBeGreaterThan(0);
+    expect(mockSetValue).toHaveBeenCalledWith(13500);
+  });
+});
