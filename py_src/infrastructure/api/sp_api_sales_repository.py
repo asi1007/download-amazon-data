@@ -1,0 +1,46 @@
+from __future__ import annotations
+import time
+from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
+
+MARKETPLACE_JP = "A1VC38T7YXB528"
+
+
+class SpApiSalesRepository:
+    def __init__(self, authenticator: SpApiAuthenticator) -> None:
+        self._auth = authenticator
+
+    def get_daily_sales(
+        self, asin_list: list[str], start_date: str, end_date: str
+    ) -> dict[str, SalesInfo]:
+        result: dict[str, SalesInfo] = {}
+        for i, asin in enumerate(asin_list):
+            if i > 0:
+                time.sleep(4)
+            result[asin] = self._fetch_sales(asin, start_date, end_date)
+        return result
+
+    def _fetch_sales(self, asin: str, start_date: str, end_date: str) -> SalesInfo:
+        interval = f"{start_date}--{end_date}"
+        url = (
+            f"{SP_API_BASE}/sales/v1/orderMetrics"
+            f"?marketplaceIds={MARKETPLACE_JP}"
+            f"&interval={interval}"
+            f"&granularity=Day"
+            f"&granularityTimeZone=Asia/Tokyo"
+            f"&asin={asin}"
+        )
+        response = self._auth.request("GET", url)
+        return self._parse_sales(response.json())
+
+    @staticmethod
+    def _parse_sales(data: dict) -> SalesInfo:
+        payload = data.get("payload", [])
+        if not payload:
+            return SalesInfo()
+        entry = payload[0]
+        return SalesInfo(
+            unit_count=entry.get("unitCount", 0),
+            total_sales_amount=float(entry.get("totalSales", {}).get("amount", 0)),
+            order_count=entry.get("orderCount", 0),
+        )
