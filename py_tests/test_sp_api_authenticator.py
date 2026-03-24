@@ -1,0 +1,87 @@
+import pytest
+from unittest.mock import Mock, patch
+from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
+
+
+def _make_response(json_data: dict, status_code: int = 200) -> Mock:
+    resp = Mock()
+    resp.json.return_value = json_data
+    resp.status_code = status_code
+    resp.raise_for_status = Mock()
+    return resp
+
+
+class TestSpApiAuthenticator:
+    def test_authenticate(self) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "test_token"})
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        assert auth.headers()["x-amz-access-token"] == "test_token"
+
+    def test_headers_format(self) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "abc"})
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        h = auth.headers()
+        assert h["Accept"] == "application/json"
+        assert h["Content-Type"] == "application/json"
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_request_success(self, mock_sleep: Mock) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "token"})
+        session.request.return_value = _make_response({"data": "ok"})
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        resp = auth.request("GET", "https://example.com/api")
+        assert resp.json() == {"data": "ok"}
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_request_retries_on_429(self, mock_sleep: Mock) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "token"})
+        rate_limited = _make_response({}, status_code=429)
+        success = _make_response({"data": "ok"})
+        session.request.side_effect = [rate_limited, success]
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        resp = auth.request("GET", "https://example.com/api")
+        assert resp.json() == {"data": "ok"}
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_request_reauthenticates_on_403(self, mock_sleep: Mock) -> None:
+        session = Mock()
+        auth_resp1 = _make_response({"access_token": "token1"})
+        auth_resp2 = _make_response({"access_token": "token2"})
+        session.post.side_effect = [auth_resp1, auth_resp2]
+        forbidden = _make_response({}, status_code=403)
+        success = _make_response({"data": "ok"})
+        session.request.side_effect = [forbidden, success]
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        resp = auth.request("GET", "https://example.com/api")
+        assert resp.json() == {"data": "ok"}
+        assert session.post.call_count == 2
+
+    def test_authenticate_failure_raises(self) -> None:
+        session = Mock()
+        resp = Mock()
+        resp.raise_for_status.side_effect = Exception("401 Unauthorized")
+        session.post.return_value = resp
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        with pytest.raises(Exception, match="401"):
+            auth.authenticate()
