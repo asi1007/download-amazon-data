@@ -58,11 +58,11 @@ class SalesSheet {
       }
     }
 
-    this.sheet.getRange(3, this.START_COLUMN).setValue(totalAmount);
-
     if (writeData.length > 0) {
       this.sheet.getRange(2, this.START_COLUMN, writeData.length, 1).setValues(writeData);
     }
+
+    this.sheet.getRange(3, this.START_COLUMN).setValue(totalAmount);
 
     if (filterRange) {
       this.sheet.getRange(
