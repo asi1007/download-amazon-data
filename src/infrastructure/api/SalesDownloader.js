@@ -18,6 +18,7 @@ class SalesDownloader extends Downloader {
     asinList.forEach((asin, index) => {
       const res = responses[index];
       if (res.payload && res.payload[0]) {
+        console.log(asin + ": " + JSON.stringify(res.payload[0]));
         asinSalesNums[asin] = res.payload[0];
       } else {
         failedAsins.push(asin);
