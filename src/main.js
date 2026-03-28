@@ -1,5 +1,5 @@
 function updateYesterdaySalesNum() {
-  const salesSheet = new SalesSheet("売上/日", "B2");
+  const salesSheet = new SalesSheet("売上/日");
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
   const priceDownloader = new PriceDownloader("/products/pricing/v0/competitivePrice");
   const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader, priceDownloader);
@@ -7,7 +7,7 @@ function updateYesterdaySalesNum() {
 }
 
 function updateLastWeekSalesNum() {
-  const salesSheet = new SalesSheet("売上/日", "B2");
+  const salesSheet = new SalesSheet("売上/日");
   const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
   const adDataReader = new AmazonAdDataReader();
   const useCase = new UpdateSalesUseCase(salesSheet, salesDownloader, null, adDataReader);
@@ -15,7 +15,7 @@ function updateLastWeekSalesNum() {
 }
 
 function downloadPrices() {
-  const salesSheet = new SalesSheet("売上/日", "B2");
+  const salesSheet = new SalesSheet("売上/日");
   const skuDownloader = new SKUDownloader("/listings/2021-08-01/items/APS8L6SC4MEPF");
   const priceDownloader = new PriceDownloader("/products/pricing/v0/competitivePrice");
   const useCase = new UpdatePriceUseCase(salesSheet, skuDownloader, priceDownloader);
@@ -37,7 +37,7 @@ function updateInventoryStatus() {
 
 function updateWeeklyCostSummary() {
   try {
-    const salesSheet = new SalesSheet("売上/日", "B2");
+    const salesSheet = new SalesSheet("売上/日");
     const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
     const costDataReader = new CostDataReader();
     const weeklyCostSheet = new WeeklyCostSheet();

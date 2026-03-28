@@ -3,10 +3,17 @@ function updatePrice() {
   const row = sheet.getActiveCell().getRow();
   console.log(row);
 
-  const settingSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("設定");
-  const sku = sheet.getRange(row, settingSheet.getRange("B8").getValue()).getValue();
-  const price = sheet.getRange(row, settingSheet.getRange("B5").getValue()).getValue();
-  const name = sheet.getRange(row, settingSheet.getRange("B9").getValue()).getValue();
+  const HEADER_ROW = 4;
+  const headers = sheet.getRange(HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const findColumn = (name) => {
+    const index = headers.indexOf(name);
+    if (index === -1) throw new Error(`ヘッダー「${name}」が見つかりません`);
+    return index + 1;
+  };
+
+  const sku = sheet.getRange(row, findColumn("SKU")).getValue();
+  const price = sheet.getRange(row, findColumn("自社価格")).getValue();
+  const name = sheet.getRange(row, findColumn("商品名")).getValue();
 
   const reason = Browser.inputBox(name + "\\n" + price + "円に設定します。理由を入力してください");
 

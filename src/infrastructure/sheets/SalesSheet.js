@@ -1,16 +1,22 @@
 class SalesSheet {
-  constructor(sheetName, cell) {
+  constructor(sheetName) {
     this.sheetName = sheetName;
-    this.configCell = cell;
     this._refreshSheet();
     this.asinToRow = {};
     this.asinList = [];
   }
 
   _refreshSheet() {
-    this.START_COLUMN = getSheetByName("設定").getRange(this.configCell).getValue();
-    this.PRICE_COLUMN = getSheetByName("設定").getRange("B5").getValue();
     this.sheet = getSheetByName(this.sheetName);
+    const HEADER_ROW = 4;
+    const headers = this.sheet.getRange(HEADER_ROW, 1, 1, this.sheet.getLastColumn()).getValues()[0];
+    const findColumn = (name) => {
+      const index = headers.indexOf(name);
+      if (index === -1) throw new Error(`ヘッダー「${name}」が見つかりません`);
+      return index + 1;
+    };
+    this.START_COLUMN = findColumn("開始");
+    this.PRICE_COLUMN = findColumn("自社価格");
     const lastRow = this.sheet.getLastRow();
     this.asinRange = this.sheet.getRange(1, 1, lastRow);
   }
