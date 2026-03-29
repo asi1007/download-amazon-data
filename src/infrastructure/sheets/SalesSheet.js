@@ -80,6 +80,18 @@ class SalesSheet {
     }
   }
 
+  getSellingPrices() {
+    const asinToPrices = {};
+    for (const asin of this.asinList) {
+      const row = this.asinToRow[asin];
+      const price = this.sheet.getRange(row, this.PRICE_COLUMN).getValue();
+      if (price) {
+        asinToPrices[asin] = Number(price);
+      }
+    }
+    return asinToPrices;
+  }
+
   writePrice(asintoPrices) {
     for (const asin in asintoPrices) {
       if (this.asinList.includes(asin)) {

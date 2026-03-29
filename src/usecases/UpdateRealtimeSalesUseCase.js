@@ -1,11 +1,13 @@
 class UpdateRealtimeSalesUseCase {
-  constructor(realtimeSalesSheet, ordersDownloader) {
+  constructor(realtimeSalesSheet, ordersDownloader, salesSheet) {
     this.realtimeSalesSheet = realtimeSalesSheet;
     this.ordersDownloader = ordersDownloader;
+    this.salesSheet = salesSheet;
   }
 
   execute() {
     const asinList = this.realtimeSalesSheet.getAsinList();
+    const sellingPrices = this._loadSellingPrices();
     const startDate = this._getTodayStart();
 
     let orders;
@@ -16,8 +18,14 @@ class UpdateRealtimeSalesUseCase {
       return;
     }
 
-    const salesMap = this._aggregateByAsin(orders, asinList);
+    const salesMap = this._aggregateByAsin(orders, asinList, sellingPrices);
     this.realtimeSalesSheet.writeRealtimeSales(salesMap);
+  }
+
+  _loadSellingPrices() {
+    if (!this.salesSheet) return {};
+    this.salesSheet.getASINList();
+    return this.salesSheet.getSellingPrices();
   }
 
   _getTodayStart() {
@@ -25,7 +33,7 @@ class UpdateRealtimeSalesUseCase {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   }
 
-  _aggregateByAsin(orders, asinList) {
+  _aggregateByAsin(orders, asinList, sellingPrices) {
     const salesMap = {};
     for (const asin of asinList) {
       salesMap[asin] = new RealtimeSalesResult(asin);
@@ -36,7 +44,10 @@ class UpdateRealtimeSalesUseCase {
     for (const order of activeOrders) {
       for (const item of order.items) {
         if (salesMap[item.asin]) {
-          salesMap[item.asin].addSale(item.quantityOrdered, item.itemPriceAmount);
+          const amount = item.itemPriceAmount > 0
+            ? item.itemPriceAmount
+            : (sellingPrices[item.asin] || 0) * item.quantityOrdered;
+          salesMap[item.asin].addSale(item.quantityOrdered, amount);
         }
       }
     }

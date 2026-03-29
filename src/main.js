@@ -112,7 +112,8 @@ function updateRealtimeSales() {
   try {
     const realtimeSalesSheet = new RealtimeSalesSheet();
     const ordersDownloader = new OrdersDownloader('/orders/v0/orders');
-    const useCase = new UpdateRealtimeSalesUseCase(realtimeSalesSheet, ordersDownloader);
+    const salesSheet = new SalesSheet("売上/日");
+    const useCase = new UpdateRealtimeSalesUseCase(realtimeSalesSheet, ordersDownloader, salesSheet);
     useCase.execute();
   } catch (error) {
     Logger.log('エラーが発生しました: ' + error.toString());
