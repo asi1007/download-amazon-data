@@ -8,6 +8,8 @@ class UpdateRealtimeSalesUseCase {
   execute() {
     const asinList = this.realtimeSalesSheet.getAsinList();
     const sellingPrices = this._loadSellingPrices();
+    console.log("B0FR3CZRGP sellingPrice: " + sellingPrices['B0FR3CZRGP']);
+    console.log("PRICE_COLUMN: " + (this.salesSheet ? this.salesSheet.PRICE_COLUMN : 'N/A'));
     const { startDate, endDate } = this._getTodayRange();
 
     const asinSalesInfos = this.salesDownloader.getSalesInfosOf(asinList, "Day", startDate, endDate);
