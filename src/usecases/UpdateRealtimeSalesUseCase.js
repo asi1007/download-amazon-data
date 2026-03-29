@@ -1,24 +1,17 @@
 class UpdateRealtimeSalesUseCase {
-  constructor(realtimeSalesSheet, ordersDownloader, salesSheet) {
+  constructor(realtimeSalesSheet, salesDownloader, salesSheet) {
     this.realtimeSalesSheet = realtimeSalesSheet;
-    this.ordersDownloader = ordersDownloader;
+    this.salesDownloader = salesDownloader;
     this.salesSheet = salesSheet;
   }
 
   execute() {
     const asinList = this.realtimeSalesSheet.getAsinList();
     const sellingPrices = this._loadSellingPrices();
-    const startDate = this._getTodayStart();
+    const { startDate, endDate } = this._getTodayRange();
 
-    let orders;
-    try {
-      orders = this.ordersDownloader.getOrdersWithItems(startDate);
-    } catch (error) {
-      console.log('注文データの取得に失敗しました: ' + error.message);
-      return;
-    }
-
-    const salesMap = this._aggregateByAsin(orders, asinList, sellingPrices);
+    const asinSalesInfos = this.salesDownloader.getSalesInfosOf(asinList, "Day", startDate, endDate);
+    const salesMap = this._buildSalesMap(asinList, asinSalesInfos, sellingPrices);
     this.realtimeSalesSheet.writeRealtimeSales(salesMap);
   }
 
@@ -28,30 +21,21 @@ class UpdateRealtimeSalesUseCase {
     return this.salesSheet.getSellingPrices();
   }
 
-  _getTodayStart() {
+  _getTodayRange() {
     const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+    return { startDate, endDate };
   }
 
-  _aggregateByAsin(orders, asinList, sellingPrices) {
+  _buildSalesMap(asinList, asinSalesInfos, sellingPrices) {
     const salesMap = {};
     for (const asin of asinList) {
-      salesMap[asin] = new RealtimeSalesResult(asin);
+      const info = asinSalesInfos[asin];
+      const unitCount = info ? info.unitCount : 0;
+      const totalAmount = unitCount * (sellingPrices[asin] || 0);
+      salesMap[asin] = new RealtimeSalesResult(asin, unitCount, totalAmount);
     }
-
-    const activeOrders = orders.filter(order => !order.isCanceled());
-
-    for (const order of activeOrders) {
-      for (const item of order.items) {
-        if (salesMap[item.asin]) {
-          const amount = item.itemPriceAmount > 0
-            ? item.itemPriceAmount
-            : (sellingPrices[item.asin] || 0) * item.quantityOrdered;
-          salesMap[item.asin].addSale(item.quantityOrdered, amount);
-        }
-      }
-    }
-
     return salesMap;
   }
 }

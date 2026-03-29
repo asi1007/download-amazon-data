@@ -111,9 +111,9 @@ function deleteOrderNumber() {
 function updateRealtimeSales() {
   try {
     const realtimeSalesSheet = new RealtimeSalesSheet();
-    const ordersDownloader = new OrdersDownloader('/orders/v0/orders');
+    const salesDownloader = new SalesDownloader("/sales/v1/orderMetrics");
     const salesSheet = new SalesSheet("売上/日");
-    const useCase = new UpdateRealtimeSalesUseCase(realtimeSalesSheet, ordersDownloader, salesSheet);
+    const useCase = new UpdateRealtimeSalesUseCase(realtimeSalesSheet, salesDownloader, salesSheet);
     useCase.execute();
   } catch (error) {
     Logger.log('エラーが発生しました: ' + error.toString());
