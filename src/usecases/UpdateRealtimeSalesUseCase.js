@@ -8,7 +8,6 @@ class UpdateRealtimeSalesUseCase {
   execute() {
     const asinList = this.realtimeSalesSheet.getAsinList();
     const sellingPrices = this._loadSellingPrices();
-    console.log("sellingPrices keys: " + Object.keys(sellingPrices).length);
     const startDate = this._getTodayStart();
 
     let orders;
@@ -48,9 +47,6 @@ class UpdateRealtimeSalesUseCase {
           const amount = item.itemPriceAmount > 0
             ? item.itemPriceAmount
             : (sellingPrices[item.asin] || 0) * item.quantityOrdered;
-          if (item.itemPriceAmount === 0) {
-            console.log("FALLBACK " + item.asin + " qty:" + item.quantityOrdered + " sellingPrice:" + sellingPrices[item.asin] + " amount:" + amount);
-          }
           salesMap[item.asin].addSale(item.quantityOrdered, amount);
         }
       }
