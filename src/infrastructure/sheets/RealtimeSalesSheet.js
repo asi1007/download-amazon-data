@@ -25,7 +25,7 @@ class RealtimeSalesSheet {
     });
 
     if (writeData.length > 0) {
-      this.sheet.getRange(2, 2, writeData.length, 2).setValues(writeData);
+      this.sheet.getRange(2, 3, writeData.length, 2).setValues(writeData);
     }
   }
 }
