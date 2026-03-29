@@ -23,7 +23,8 @@ class RealtimeSalesSheet {
 
   writeRealtimeSales(salesMap) {
     const lastRow = this.sheet.getLastRow();
-    const asinValues = this.sheet.getRange(1, 1, lastRow).getValues();
+    if (lastRow < 2) return;
+    const asinValues = this.sheet.getRange(2, 1, lastRow - 1).getValues();
     const writeData = [];
 
     for (let i = 0; i < asinValues.length; i++) {
@@ -36,7 +37,7 @@ class RealtimeSalesSheet {
     }
 
     if (writeData.length > 0) {
-      this.sheet.getRange(1, 3, writeData.length, 2).setValues(writeData);
+      this.sheet.getRange(2, 3, writeData.length, 2).setValues(writeData);
     }
   }
 }
