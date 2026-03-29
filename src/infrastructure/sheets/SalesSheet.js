@@ -81,14 +81,17 @@ class SalesSheet {
   }
 
   getSellingPrices() {
+    console.log("PRICE_COLUMN: " + this.PRICE_COLUMN);
     const asinToPrices = {};
     for (const asin of this.asinList) {
       const row = this.asinToRow[asin];
       const price = this.sheet.getRange(row, this.PRICE_COLUMN).getValue();
+      console.log(asin + " row:" + row + " price:" + price + " type:" + typeof price);
       if (price) {
         asinToPrices[asin] = Number(price);
       }
     }
+    console.log("sellingPrices count: " + Object.keys(asinToPrices).length);
     return asinToPrices;
   }
 
