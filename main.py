@@ -5,7 +5,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
-from py_src.infrastructure.api.orders_repository import OrdersRepository
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
@@ -17,12 +16,21 @@ from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
 def main() -> None:
     load_dotenv()
     authenticator = _create_authenticator()
-    repository = OrdersRepository(authenticator=authenticator)
+    sales_repository = SpApiSalesRepository(authenticator=authenticator)
     spreadsheet = _open_spreadsheet()
-    sheet_name = os.getenv("SHEET_NAME", "売上/今")
-    worksheet = spreadsheet.worksheet(sheet_name)
-    sheet = RealtimeSalesSheet(worksheet=worksheet)
-    usecase = UpdateRealtimeSalesUseCase(sheet=sheet, repository=repository)
+
+    realtime_ws = spreadsheet.worksheet("売上/今")
+    realtime_sheet = RealtimeSalesSheet(worksheet=realtime_ws)
+
+    sales_ws = spreadsheet.worksheet("売上/日")
+    settings_ws = spreadsheet.worksheet("設定")
+    sales_sheet = SalesSheet(sales_worksheet=sales_ws, settings_worksheet=settings_ws)
+
+    usecase = UpdateRealtimeSalesUseCase(
+        realtime_sheet=realtime_sheet,
+        sales_repository=sales_repository,
+        sales_sheet=sales_sheet,
+    )
     usecase.execute()
 
 
