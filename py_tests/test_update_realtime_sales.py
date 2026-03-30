@@ -1,75 +1,89 @@
 import pytest
 from unittest.mock import Mock
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
-from py_src.domain.entities.order import Order, OrderItem
+from py_src.domain.value_objects.sales_info import SalesInfo
 
 
 class TestUpdateRealtimeSalesUseCase:
-    def test_aggregates_by_asin(self) -> None:
-        mock_sheet = Mock()
-        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF"]
-        mock_repo = Mock()
-        mock_repo.get_orders_with_items.return_value = [
-            Order(order_id="503-001", order_status="Shipped", items=[
-                OrderItem(asin="B00EXAMPLE", quantity_ordered=2, item_price_amount=3000.0),
-                OrderItem(asin="B00EXAMPLF", quantity_ordered=1, item_price_amount=1500.0),
-            ]),
-        ]
-        mock_price_repo = Mock()
-        mock_price_repo.get_competitive_prices.return_value = {}
-        usecase = UpdateRealtimeSalesUseCase(sheet=mock_sheet, repository=mock_repo, price_repository=mock_price_repo)
+    def test_calculates_amount_from_unit_count_and_selling_price(self) -> None:
+        mock_realtime_sheet = Mock()
+        mock_realtime_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF"]
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.return_value = {
+            "B00EXAMPLE": SalesInfo(unit_count=3, total_sales_amount=900.0, order_count=2),
+            "B00EXAMPLF": SalesInfo(unit_count=1, total_sales_amount=400.0, order_count=1),
+        }
+        mock_sales_sheet = Mock()
+        mock_sales_sheet.get_selling_prices.return_value = {
+            "B00EXAMPLE": 500.0,
+            "B00EXAMPLF": 800.0,
+        }
+        usecase = UpdateRealtimeSalesUseCase(
+            realtime_sheet=mock_realtime_sheet,
+            sales_repository=mock_sales_repo,
+            sales_sheet=mock_sales_sheet,
+        )
         usecase.execute()
-        sales_map = mock_sheet.write_realtime_sales.call_args[0][0]
-        assert sales_map["B00EXAMPLE"].unit_count == 2
-        assert sales_map["B00EXAMPLE"].total_amount == 6000.0
 
-    def test_excludes_canceled_orders(self) -> None:
-        mock_sheet = Mock()
-        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
-        mock_repo = Mock()
-        mock_repo.get_orders_with_items.return_value = [
-            Order(order_id="503-001", order_status="Canceled",
-                  items=[OrderItem(asin="B00EXAMPLE", quantity_ordered=2, item_price_amount=3000.0)]),
-        ]
-        mock_price_repo = Mock()
-        mock_price_repo.get_competitive_prices.return_value = {}
-        usecase = UpdateRealtimeSalesUseCase(sheet=mock_sheet, repository=mock_repo, price_repository=mock_price_repo)
+        sales_map = mock_realtime_sheet.write_realtime_sales.call_args[0][0]
+        assert sales_map["B00EXAMPLE"].unit_count == 3
+        assert sales_map["B00EXAMPLE"].total_amount == 1500.0
+        assert sales_map["B00EXAMPLF"].unit_count == 1
+        assert sales_map["B00EXAMPLF"].total_amount == 800.0
+
+    def test_zero_sales(self) -> None:
+        mock_realtime_sheet = Mock()
+        mock_realtime_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.return_value = {
+            "B00EXAMPLE": SalesInfo(unit_count=0, total_sales_amount=0.0, order_count=0),
+        }
+        mock_sales_sheet = Mock()
+        mock_sales_sheet.get_selling_prices.return_value = {"B00EXAMPLE": 500.0}
+        usecase = UpdateRealtimeSalesUseCase(
+            realtime_sheet=mock_realtime_sheet,
+            sales_repository=mock_sales_repo,
+            sales_sheet=mock_sales_sheet,
+        )
         usecase.execute()
-        sales_map = mock_sheet.write_realtime_sales.call_args[0][0]
+
+        sales_map = mock_realtime_sheet.write_realtime_sales.call_args[0][0]
         assert sales_map["B00EXAMPLE"].unit_count == 0
+        assert sales_map["B00EXAMPLE"].total_amount == 0.0
 
-    def test_uses_current_price_for_zero_items(self) -> None:
-        mock_sheet = Mock()
-        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
-        mock_repo = Mock()
-        mock_repo.get_orders_with_items.return_value = [
-            Order(order_id="503-001", order_status="Pending",
-                  items=[OrderItem(asin="B00EXAMPLE", quantity_ordered=3, item_price_amount=0.0)]),
-        ]
-        mock_price_repo = Mock()
-        mock_price_repo.get_competitive_prices.return_value = {"B00EXAMPLE": 1500.0}
-        usecase = UpdateRealtimeSalesUseCase(sheet=mock_sheet, repository=mock_repo, price_repository=mock_price_repo)
+    def test_missing_selling_price_defaults_to_zero(self) -> None:
+        mock_realtime_sheet = Mock()
+        mock_realtime_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.return_value = {
+            "B00EXAMPLE": SalesInfo(unit_count=5, total_sales_amount=1000.0, order_count=3),
+        }
+        mock_sales_sheet = Mock()
+        mock_sales_sheet.get_selling_prices.return_value = {}
+        usecase = UpdateRealtimeSalesUseCase(
+            realtime_sheet=mock_realtime_sheet,
+            sales_repository=mock_sales_repo,
+            sales_sheet=mock_sales_sheet,
+        )
         usecase.execute()
-        sales_map = mock_sheet.write_realtime_sales.call_args[0][0]
-        assert sales_map["B00EXAMPLE"].total_amount == 4500.0
 
-    def test_raises_on_api_failure(self) -> None:
-        mock_sheet = Mock()
-        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
-        mock_repo = Mock()
-        mock_repo.get_orders_with_items.side_effect = Exception("API error")
-        usecase = UpdateRealtimeSalesUseCase(sheet=mock_sheet, repository=mock_repo)
-        with pytest.raises(Exception, match="API error"):
-            usecase.execute()
+        sales_map = mock_realtime_sheet.write_realtime_sales.call_args[0][0]
+        assert sales_map["B00EXAMPLE"].unit_count == 5
+        assert sales_map["B00EXAMPLE"].total_amount == 0.0
 
-    def test_handles_zero_orders(self) -> None:
-        mock_sheet = Mock()
-        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
-        mock_repo = Mock()
-        mock_repo.get_orders_with_items.return_value = []
-        mock_price_repo = Mock()
-        mock_price_repo.get_competitive_prices.return_value = {}
-        usecase = UpdateRealtimeSalesUseCase(sheet=mock_sheet, repository=mock_repo, price_repository=mock_price_repo)
+    def test_works_without_sales_sheet(self) -> None:
+        mock_realtime_sheet = Mock()
+        mock_realtime_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.return_value = {
+            "B00EXAMPLE": SalesInfo(unit_count=5, total_sales_amount=1000.0, order_count=3),
+        }
+        usecase = UpdateRealtimeSalesUseCase(
+            realtime_sheet=mock_realtime_sheet,
+            sales_repository=mock_sales_repo,
+        )
         usecase.execute()
-        sales_map = mock_sheet.write_realtime_sales.call_args[0][0]
-        assert sales_map["B00EXAMPLE"].unit_count == 0
+
+        sales_map = mock_realtime_sheet.write_realtime_sales.call_args[0][0]
+        assert sales_map["B00EXAMPLE"].unit_count == 5
+        assert sales_map["B00EXAMPLE"].total_amount == 0.0
