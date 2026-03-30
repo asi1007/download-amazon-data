@@ -1,10 +1,10 @@
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
-from py_src.domain.entities.order import Order
 from py_src.domain.value_objects.realtime_sales_result import RealtimeSalesResult
-from py_src.domain.repositories.price_repository import PriceRepository
-from py_src.infrastructure.api.orders_repository import OrdersRepository
+from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
+from py_src.infrastructure.sheets.sales_sheet import SalesSheet
 
 JST = timezone(timedelta(hours=9))
 
@@ -12,55 +12,48 @@ JST = timezone(timedelta(hours=9))
 class UpdateRealtimeSalesUseCase:
     def __init__(
         self,
-        sheet: RealtimeSalesSheet,
-        repository: OrdersRepository,
-        price_repository: PriceRepository | None = None,
+        realtime_sheet: RealtimeSalesSheet,
+        sales_repository: SpApiSalesRepository,
+        sales_sheet: SalesSheet | None = None,
     ) -> None:
-        self._sheet = sheet
-        self._repository = repository
-        self._price_repository = price_repository
+        self._realtime_sheet = realtime_sheet
+        self._sales_repository = sales_repository
+        self._sales_sheet = sales_sheet
 
     def execute(self) -> None:
-        asin_list = self._sheet.get_asin_list()
-        created_after = self._get_today_start()
-        orders = self._repository.get_orders_with_items(created_after=created_after)
-        current_prices = self._fetch_prices_for_zero_items(orders, asin_list)
-        sales_map = self._aggregate_by_asin(orders, asin_list, current_prices)
-        self._sheet.write_realtime_sales(sales_map)
+        asin_list = self._realtime_sheet.get_asin_list()
+        selling_prices = self._load_selling_prices()
+        start_date, end_date = self._get_today_range()
+        sales_infos = self._sales_repository.get_daily_sales(asin_list, start_date, end_date)
+        sales_map = self._build_sales_map(asin_list, sales_infos, selling_prices)
+        self._realtime_sheet.write_realtime_sales(sales_map)
 
-    def _get_today_start(self) -> str:
+    def _load_selling_prices(self) -> dict[str, float]:
+        if not self._sales_sheet:
+            return {}
+        self._sales_sheet.get_asin_list()
+        return self._sales_sheet.get_selling_prices()
+
+    def _get_today_range(self) -> tuple[str, str]:
         now = datetime.now(JST)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        utc_start = today_start.astimezone(timezone.utc)
-        return utc_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        tomorrow_start = today_start + timedelta(days=1)
+        start_utc = today_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_utc = tomorrow_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return start_utc, end_utc
 
-    def _fetch_prices_for_zero_items(
-        self, orders: list[Order], asin_list: list[str]
-    ) -> dict[str, float]:
-        asin_set = set(asin_list)
-        zero_price_asins: set[str] = set()
-        for order in orders:
-            if order.is_canceled:
-                continue
-            for item in order.items:
-                if item.asin in asin_set and item.item_price_amount == 0.0:
-                    zero_price_asins.add(item.asin)
-        if not zero_price_asins or self._price_repository is None:
-            return {}
-        return self._price_repository.get_competitive_prices(list(zero_price_asins))
-
-    def _aggregate_by_asin(
-        self, orders: list[Order], asin_list: list[str], current_prices: dict[str, float]
+    def _build_sales_map(
+        self,
+        asin_list: list[str],
+        sales_infos: dict[str, SalesInfo],
+        selling_prices: dict[str, float],
     ) -> dict[str, RealtimeSalesResult]:
-        sales_map: dict[str, RealtimeSalesResult] = {
-            asin: RealtimeSalesResult(asin=asin) for asin in asin_list
-        }
-        active_orders = [o for o in orders if not o.is_canceled]
-        for order in active_orders:
-            for item in order.items:
-                if item.asin in sales_map:
-                    unit_price = item.item_price_amount
-                    if unit_price == 0.0:
-                        unit_price = current_prices.get(item.asin, 0.0)
-                    sales_map[item.asin].add_sale(item.quantity_ordered, unit_price)
+        sales_map: dict[str, RealtimeSalesResult] = {}
+        for asin in asin_list:
+            info = sales_infos.get(asin, SalesInfo())
+            unit_count = info.unit_count
+            total_amount = unit_count * selling_prices.get(asin, 0.0)
+            sales_map[asin] = RealtimeSalesResult(
+                asin=asin, unit_count=unit_count, total_amount=total_amount,
+            )
         return sales_map

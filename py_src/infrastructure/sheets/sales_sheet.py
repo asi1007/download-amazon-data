@@ -49,8 +49,9 @@ class SalesSheet:
         if not self._asin_list:
             return {}
         last_row = max(self._asin_to_row.values())
-        col_letter = chr(ord("A") + self._price_column - 1)
-        price_range = f"{col_letter}1:{col_letter}{last_row}"
+        start_cell = rowcol_to_a1(1, self._price_column)
+        end_cell = rowcol_to_a1(last_row, self._price_column)
+        price_range = f"{start_cell}:{end_cell}"
         price_values = self._worksheet.get(price_range)
         result: dict[str, float] = {}
         for asin in self._asin_list:
