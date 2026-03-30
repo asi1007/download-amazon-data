@@ -66,3 +66,32 @@ class TestSalesSheet:
         sheet.write_prices(prices)
 
         sales_ws.update_cell.assert_called()
+
+
+class TestGetSellingPrices:
+    def test_returns_asin_to_price_map(self) -> None:
+        sales_ws = Mock()
+        settings_ws = Mock()
+        settings_ws.acell.side_effect = lambda cell: Mock(value="3" if cell == "B2" else "5")
+        sales_ws.col_values.return_value = [
+            "header", "header2", "header3", "header4",
+            "B00EXAMPLE", "B00EXAMPLF", "B00EXAMPLG",
+        ]
+        sales_ws.get.return_value = [
+            ["header"], ["header2"], ["header3"], ["header4"],
+            ["500"], ["800"], [""],
+        ]
+        sheet = SalesSheet(sales_worksheet=sales_ws, settings_worksheet=settings_ws)
+        sheet.get_asin_list()
+        prices = sheet.get_selling_prices()
+        assert prices == {"B00EXAMPLE": 500.0, "B00EXAMPLF": 800.0}
+
+    def test_returns_empty_when_no_asins(self) -> None:
+        sales_ws = Mock()
+        settings_ws = Mock()
+        settings_ws.acell.side_effect = lambda cell: Mock(value="3" if cell == "B2" else "5")
+        sales_ws.col_values.return_value = ["header"]
+        sheet = SalesSheet(sales_worksheet=sales_ws, settings_worksheet=settings_ws)
+        sheet.get_asin_list()
+        prices = sheet.get_selling_prices()
+        assert prices == {}

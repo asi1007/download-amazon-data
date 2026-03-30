@@ -45,6 +45,22 @@ class SalesSheet:
             total_amount += sales.total_sales_amount
         self._worksheet.update(rowcol_to_a1(3, col), [[total_amount]])
 
+    def get_selling_prices(self) -> dict[str, float]:
+        if not self._asin_list:
+            return {}
+        last_row = max(self._asin_to_row.values())
+        col_letter = chr(ord("A") + self._price_column - 1)
+        price_range = f"{col_letter}1:{col_letter}{last_row}"
+        price_values = self._worksheet.get(price_range)
+        result: dict[str, float] = {}
+        for asin in self._asin_list:
+            row = self._asin_to_row[asin]
+            if row - 1 < len(price_values):
+                cell_value = price_values[row - 1][0] if price_values[row - 1] else ""
+                if cell_value:
+                    result[asin] = float(cell_value)
+        return result
+
     def write_prices(self, prices: dict[str, float]) -> None:
         col = self._start_column
         for asin, price in prices.items():
