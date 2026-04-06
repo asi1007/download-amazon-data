@@ -23,8 +23,7 @@ def main() -> None:
     realtime_sheet = RealtimeSalesSheet(worksheet=realtime_ws)
 
     sales_ws = spreadsheet.worksheet("売上/日")
-    settings_ws = spreadsheet.worksheet("設定")
-    sales_sheet = SalesSheet(sales_worksheet=sales_ws, settings_worksheet=settings_ws)
+    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
 
     usecase = UpdateRealtimeSalesUseCase(
         realtime_sheet=realtime_sheet,
@@ -61,8 +60,7 @@ def update_daily_sales() -> None:
     price_repository = SpApiPriceRepository(authenticator=authenticator)
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
-    settings_ws = spreadsheet.worksheet("設定")
-    sales_sheet = SalesSheet(sales_worksheet=sales_ws, settings_worksheet=settings_ws)
+    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
     usecase = UpdateDailySalesUseCase(
         sales_sheet=sales_sheet,
         sales_repository=sales_repository,

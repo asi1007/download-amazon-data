@@ -19,7 +19,7 @@ class RealtimeSalesSheet:
         self._unit_col = self._find_column(header, "個数")
         self._sales_col = self._find_column(header, "売上")
         values = self._worksheet.col_values(1)
-        self._asin_list = [v.strip() for v in values[1:] if v and v.strip()]
+        self._asin_list = [v.strip() for v in values[1:] if v and len(v.strip()) == 10]
         return self._asin_list
 
     def write_realtime_sales(self, sales_map: dict[str, RealtimeSalesResult]) -> None:

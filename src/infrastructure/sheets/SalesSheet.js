@@ -15,7 +15,7 @@ class SalesSheet {
       if (index === -1) throw new Error(`ヘッダー「${name}」が見つかりません`);
       return index + 1;
     };
-    this.START_COLUMN = findColumn("開始");
+    this.START_COLUMN = findColumn("目標販売数") + 1;
     this.PRICE_COLUMN = findColumn("自社価格");
     const lastRow = this.sheet.getLastRow();
     this.asinRange = this.sheet.getRange(1, 1, lastRow);

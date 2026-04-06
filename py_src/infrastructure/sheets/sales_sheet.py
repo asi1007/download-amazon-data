@@ -9,17 +9,17 @@ HEADER_ROW = 4
 
 
 class SalesSheet:
-    def __init__(self, sales_worksheet: Worksheet, settings_worksheet: Worksheet) -> None:
+    def __init__(self, sales_worksheet: Worksheet) -> None:
         self._worksheet = sales_worksheet
-        self._settings = settings_worksheet
         self._asin_list: list[str] = []
         self._asin_to_row: dict[str, int] = {}
         self._start_column: int = 0
         self._price_column: int = 0
 
     def get_asin_list(self) -> list[str]:
-        self._start_column = int(self._settings.acell("B2").value)
-        self._price_column = int(self._settings.acell("B5").value)
+        headers = self._worksheet.row_values(HEADER_ROW)
+        self._start_column = self._find_column(headers, "目標販売数") + 1
+        self._price_column = self._find_column(headers, "自社価格")
         values = self._worksheet.col_values(1)
         self._asin_list = []
         self._asin_to_row = {}
@@ -59,8 +59,17 @@ class SalesSheet:
             if row - 1 < len(price_values):
                 cell_value = price_values[row - 1][0] if price_values[row - 1] else ""
                 if cell_value:
-                    result[asin] = float(cell_value)
+                    cleaned = str(cell_value).replace("¥", "").replace(",", "").strip()
+                    if cleaned:
+                        result[asin] = float(cleaned)
         return result
+
+    @staticmethod
+    def _find_column(headers: list[str], name: str) -> int:
+        for i, value in enumerate(headers):
+            if value.strip() == name:
+                return i + 1
+        raise ValueError(f"ヘッダーに '{name}' が見つかりません")
 
     def write_prices(self, prices: dict[str, float]) -> None:
         col = self._start_column
