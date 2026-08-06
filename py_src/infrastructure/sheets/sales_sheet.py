@@ -6,6 +6,12 @@ from py_src.domain.value_objects.sales_info import SalesInfo
 
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
+SHEETS_EPOCH = datetime(1899, 12, 30)
+
+
+def _date_serial(jst_datetime: datetime) -> int:
+    naive = datetime(jst_datetime.year, jst_datetime.month, jst_datetime.day)
+    return (naive - SHEETS_EPOCH).days
 
 
 class SalesSheet:
@@ -32,18 +38,24 @@ class SalesSheet:
 
     def write_sales_nums(self, asin_sales: dict[str, SalesInfo]) -> None:
         col = self._start_column
-        self._worksheet.insert_cols(col)
-        date_str = datetime.now(JST).strftime("%d")
-        self._worksheet.update(rowcol_to_a1(1, col), [[date_str]])
-        self._worksheet.update(rowcol_to_a1(HEADER_ROW, col), [[date_str]])
+        self._worksheet.insert_cols([[""]], col)
+        yesterday = datetime.now(JST) - timedelta(days=1)
+        date_serial = _date_serial(yesterday)
+
+        requests: list[dict] = []
+        requests.append({"range": rowcol_to_a1(1, col), "values": [[date_serial]]})
+        requests.append({"range": rowcol_to_a1(HEADER_ROW, col), "values": [[date_serial]]})
+
         total_amount = 0.0
         for asin in self._asin_list:
             row = self._asin_to_row[asin]
             sales = asin_sales.get(asin, SalesInfo())
             if row != 3:
-                self._worksheet.update(rowcol_to_a1(row, col), [[sales.unit_count]])
+                requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
             total_amount += sales.total_sales_amount
-        self._worksheet.update(rowcol_to_a1(3, col), [[total_amount]])
+        requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
+
+        self._worksheet.batch_update(requests, value_input_option="RAW")
 
     def get_selling_prices(self) -> dict[str, float]:
         if not self._asin_list:
@@ -72,18 +84,52 @@ class SalesSheet:
         raise ValueError(f"ヘッダーに '{name}' が見つかりません")
 
     def write_prices(self, prices: dict[str, float]) -> None:
+        targets = {
+            asin: self._asin_to_row[asin]
+            for asin in prices
+            if asin in self._asin_to_row
+        }
+        if not targets:
+            return
         col = self._start_column
-        for asin, price in prices.items():
-            if asin not in self._asin_to_row:
+        previous_prices = self._read_previous_prices(col + 1, max(targets.values()))
+
+        requests: list[dict] = []
+        notes: dict[str, str] = {}
+        cheaper: list[str] = []
+        pricier: list[str] = []
+        for asin, row in targets.items():
+            price = prices[asin]
+            requests.append(
+                {"range": rowcol_to_a1(row, self._price_column), "values": [[price]]}
+            )
+            cell = rowcol_to_a1(row, col)
+            notes[cell] = str(price)
+            previous = previous_prices.get(row)
+            if previous is None:
                 continue
-            row = self._asin_to_row[asin]
-            self._worksheet.update_cell(row, self._price_column, price)
-            self._worksheet.update_note(rowcol_to_a1(row, col), str(price))
-            prev_cell = self._worksheet.cell(row, col + 1)
-            prev_price_str = prev_cell.value if prev_cell.value else ""
-            if prev_price_str:
-                prev_price = float(prev_price_str)
-                if price < prev_price:
-                    self._worksheet.format(rowcol_to_a1(row, col), {"backgroundColor": {"red": 1, "green": 0, "blue": 0}})
-                elif price > prev_price:
-                    self._worksheet.format(rowcol_to_a1(row, col), {"backgroundColor": {"red": 0, "green": 1, "blue": 1}})
+            if price < previous:
+                cheaper.append(cell)
+            elif price > previous:
+                pricier.append(cell)
+
+        self._worksheet.batch_update(requests, value_input_option="RAW")
+        self._worksheet.update_notes(notes)
+        if cheaper:
+            self._worksheet.format(cheaper, {"backgroundColor": {"red": 1, "green": 0, "blue": 0}})
+        if pricier:
+            self._worksheet.format(pricier, {"backgroundColor": {"red": 0, "green": 1, "blue": 1}})
+
+    def _read_previous_prices(self, col: int, last_row: int) -> dict[int, float]:
+        cell_range = f"{rowcol_to_a1(1, col)}:{rowcol_to_a1(last_row, col)}"
+        values = self._worksheet.get(cell_range)
+        result: dict[int, float] = {}
+        for index, row_values in enumerate(values):
+            raw = row_values[0] if row_values else ""
+            if not raw:
+                continue
+            try:
+                result[index + 1] = float(str(raw).replace(",", "").strip())
+            except ValueError:
+                continue
+        return result
