@@ -13,20 +13,32 @@ class SpApiSalesRepository:
     def get_daily_sales(
         self, asin_list: list[str], start_date: str, end_date: str
     ) -> dict[str, SalesInfo]:
+        return self._fetch_sales_for_asins(asin_list, start_date, end_date, "Day")
+
+    def get_weekly_sales(
+        self, asin_list: list[str], start_date: str, end_date: str
+    ) -> dict[str, SalesInfo]:
+        return self._fetch_sales_for_asins(asin_list, start_date, end_date, "Week")
+
+    def _fetch_sales_for_asins(
+        self, asin_list: list[str], start_date: str, end_date: str, granularity: str
+    ) -> dict[str, SalesInfo]:
         result: dict[str, SalesInfo] = {}
         for i, asin in enumerate(asin_list):
             if i > 0:
                 time.sleep(4)
-            result[asin] = self._fetch_sales(asin, start_date, end_date)
+            result[asin] = self._fetch_sales(asin, start_date, end_date, granularity)
         return result
 
-    def _fetch_sales(self, asin: str, start_date: str, end_date: str) -> SalesInfo:
+    def _fetch_sales(
+        self, asin: str, start_date: str, end_date: str, granularity: str = "Day"
+    ) -> SalesInfo:
         interval = f"{start_date}--{end_date}"
         url = (
             f"{SP_API_BASE}/sales/v1/orderMetrics"
             f"?marketplaceIds={MARKETPLACE_JP}"
             f"&interval={interval}"
-            f"&granularity=Day"
+            f"&granularity={granularity}"
             f"&granularityTimeZone=Asia/Tokyo"
             f"&asin={asin}"
         )

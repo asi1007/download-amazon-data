@@ -7,3 +7,7 @@ class SalesRepository(Protocol):
     def get_daily_sales(
         self, asin_list: list[str], start_date: str, end_date: str
     ) -> dict[str, SalesInfo]: ...
+
+    def get_weekly_sales(
+        self, asin_list: list[str], start_date: str, end_date: str
+    ) -> dict[str, SalesInfo]: ...

@@ -57,3 +57,33 @@ class TestSpApiSalesRepository:
         result = repo.get_daily_sales(["B00EXAMPLE", "B00EXAMPLF"], "2026-03-23T15:00:00Z", "2026-03-24T15:00:00Z")
         assert result["B00EXAMPLE"].unit_count == 2
         assert result["B00EXAMPLF"].unit_count == 1
+
+    @patch("py_src.infrastructure.api.sp_api_sales_repository.time.sleep")
+    def test_get_weekly_sales_uses_week_granularity(self, mock_sleep: Mock) -> None:
+        mock_session = Mock()
+        auth = _create_auth(mock_session)
+        auth.authenticate()
+        mock_session.request.return_value = _make_response({
+            "payload": [{"unitCount": 50, "totalSales": {"amount": 150000.0}, "orderCount": 30}],
+        })
+        repo = SpApiSalesRepository(authenticator=auth)
+        result = repo.get_weekly_sales(["B00EXAMPLE"], "2026-04-19T15:00:00Z", "2026-04-26T15:00:00Z")
+        called_url = mock_session.request.call_args[0][1]
+        assert "granularity=Week" in called_url
+        assert result["B00EXAMPLE"].unit_count == 50
+        assert result["B00EXAMPLE"].total_sales_amount == 150000.0
+        assert result["B00EXAMPLE"].order_count == 30
+
+    @patch("py_src.infrastructure.api.sp_api_sales_repository.time.sleep")
+    def test_get_weekly_sales_multiple_asins(self, mock_sleep: Mock) -> None:
+        mock_session = Mock()
+        auth = _create_auth(mock_session)
+        auth.authenticate()
+        mock_session.request.side_effect = [
+            _make_response({"payload": [{"unitCount": 10, "totalSales": {"amount": 30000.0}, "orderCount": 5}]}),
+            _make_response({"payload": []}),
+        ]
+        repo = SpApiSalesRepository(authenticator=auth)
+        result = repo.get_weekly_sales(["B00EXAMPLE", "B00EXAMPLF"], "2026-04-19T15:00:00Z", "2026-04-26T15:00:00Z")
+        assert result["B00EXAMPLE"].unit_count == 10
+        assert result["B00EXAMPLF"].unit_count == 0

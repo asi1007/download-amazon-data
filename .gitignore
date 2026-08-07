@@ -25,3 +25,16 @@ cron.log
 
 # Debug scripts
 debug_*.py
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# launchd の実行ログ
+launchd*.log
+launchd*.err
+
+# セッション記録
+.entire/
