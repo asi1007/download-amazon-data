@@ -161,6 +161,68 @@ class TestWritePricesQuota:
         sales_ws.update_notes.assert_not_called()
 
 
+def _create_mock_worksheet_with_duplicates() -> Mock:
+    sales_ws = Mock()
+    sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
+    sales_ws.col_values.return_value = [
+        "header", "B00EXAMPLE", "合計", "B00EXAMPLE", "B00EXAMPLF",
+    ]
+    return sales_ws
+
+
+class TestDuplicatedAsinRows:
+    def test_get_asin_list_deduplicates_preserving_order(self) -> None:
+        sheet = SalesSheet(sales_worksheet=_create_mock_worksheet_with_duplicates())
+        assert sheet.get_asin_list() == ["B00EXAMPLE", "B00EXAMPLF"]
+
+    def test_write_sales_nums_fills_every_duplicated_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_duplicates()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=4, total_sales_amount=12000.0)})
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written = {r["range"]: r["values"] for r in requests}
+        assert written[rowcol_to_a1(2, 3)] == [[4]]
+        assert written[rowcol_to_a1(4, 3)] == [[4]]
+
+    def test_write_sales_nums_counts_duplicated_asin_once_in_total(self) -> None:
+        sales_ws = _create_mock_worksheet_with_duplicates()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({
+            "B00EXAMPLE": SalesInfo(unit_count=4, total_sales_amount=12000.0),
+            "B00EXAMPLF": SalesInfo(unit_count=1, total_sales_amount=3000.0),
+        })
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row3_request = [r for r in requests if r["range"] == rowcol_to_a1(3, 3)]
+        assert row3_request[0]["values"] == [[15000.0]]
+
+    def test_write_prices_fills_every_duplicated_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_duplicates()
+        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"], ["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_prices({"B00EXAMPLE": 3000.0})
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written_ranges = {r["range"] for r in requests}
+        assert rowcol_to_a1(2, 5) in written_ranges
+        assert rowcol_to_a1(4, 5) in written_ranges
+
+    def test_get_selling_prices_reads_duplicated_asin_once(self) -> None:
+        sales_ws = _create_mock_worksheet_with_duplicates()
+        sales_ws.get.return_value = [["header"], ["500"], ["合計"], ["500"], ["800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        assert sheet.get_selling_prices() == {"B00EXAMPLE": 500.0, "B00EXAMPLF": 800.0}
+
+
 class TestGetSellingPrices:
     def test_returns_asin_to_price_map(self) -> None:
         sales_ws = Mock()

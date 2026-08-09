@@ -79,10 +79,10 @@ def _write_sales_to_column(worksheet, sales_sheet, asin_list, asin_sales, label_
     for asin in asin_list:
         if asin not in asin_sales:
             continue
-        row = sales_sheet._asin_to_row[asin]
         sales = asin_sales[asin]
-        if row != 3:
-            requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
+        for row in sales_sheet._asin_to_rows[asin]:
+            if row != 3:
+                requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
         total_amount += sales.total_sales_amount
     requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
 

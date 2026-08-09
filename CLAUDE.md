@@ -87,6 +87,15 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 - **失敗が全 ASIN の 10% を超えたら `SalesFetchFailureError` で中断する。** 部分的に壊れた列を残さないため
 - 欠測が出た日は `backfill_daily_sales.py <日付>` で埋め直す
 
+### 同じ ASIN が複数行にあることを前提にする
+
+「売上/日」の A列には**同じ ASIN が複数行に登場する**（2026-08-09 時点で `B0FBSCPJJH` が 7・8 行目、`B0F5P3RM78` が 13・56 行目）。
+
+- `SalesSheet._asin_to_rows` は **ASIN → 行番号のリスト**。`dict[str, int]` に戻すと後の行が前の行を上書きし、**先に出てくる行が毎日空のまま**になる（実際にそうなっていた）
+- 販売数・価格は重複した**全行に**書く
+- `get_asin_list()` の戻り値は重複を除いたユニークな ASIN。SP-API へ同じ ASIN を2回問い合わせないため
+- **総売上（3行目）はユニーク ASIN で合算する。** ASIN リストをそのまま回すと重複分が二重計上される
+
 ### 日付ラベルの書式
 
 「売上/日」の行1・行4 には日付をシリアル整数で書き、**書き込みのたびに `apply_date_label_format()` で `numberFormat` を明示適用する**。列挿入時の隣接列からのフォーマット継承には依存しない（継承が効かず、シリアル値のまま表示される事故があった）。

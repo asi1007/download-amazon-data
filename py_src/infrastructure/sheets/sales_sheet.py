@@ -24,7 +24,7 @@ class SalesSheet:
     def __init__(self, sales_worksheet: Worksheet) -> None:
         self._worksheet = sales_worksheet
         self._asin_list: list[str] = []
-        self._asin_to_row: dict[str, int] = {}
+        self._asin_to_rows: dict[str, list[int]] = {}
         self._start_column: int = 0
         self._price_column: int = 0
 
@@ -34,12 +34,15 @@ class SalesSheet:
         self._price_column = self._find_column(headers, "自社価格")
         values = self._worksheet.col_values(1)
         self._asin_list = []
-        self._asin_to_row = {}
+        self._asin_to_rows = {}
         for i, v in enumerate(values):
             stripped = v.strip() if v else ""
-            if len(stripped) == 10:
+            if len(stripped) != 10:
+                continue
+            if stripped not in self._asin_to_rows:
                 self._asin_list.append(stripped)
-                self._asin_to_row[stripped] = i + 1
+                self._asin_to_rows[stripped] = []
+            self._asin_to_rows[stripped].append(i + 1)
         return self._asin_list
 
     def write_sales_nums(self, asin_sales: dict[str, SalesInfo]) -> None:
@@ -56,10 +59,12 @@ class SalesSheet:
         for asin in self._asin_list:
             if asin not in asin_sales:
                 continue
-            row = self._asin_to_row[asin]
             sales = asin_sales[asin]
-            if row != 3:
-                requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
+            for row in self._asin_to_rows[asin]:
+                if row != 3:
+                    requests.append(
+                        {"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]}
+                    )
             total_amount += sales.total_sales_amount
         requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
 
@@ -69,14 +74,14 @@ class SalesSheet:
     def get_selling_prices(self) -> dict[str, float]:
         if not self._asin_list:
             return {}
-        last_row = max(self._asin_to_row.values())
+        last_row = max(self._last_row_of(asin) for asin in self._asin_list)
         start_cell = rowcol_to_a1(1, self._price_column)
         end_cell = rowcol_to_a1(last_row, self._price_column)
         price_range = f"{start_cell}:{end_cell}"
         price_values = self._worksheet.get(price_range)
         result: dict[str, float] = {}
         for asin in self._asin_list:
-            row = self._asin_to_row[asin]
+            row = self._asin_to_rows[asin][0]
             if row - 1 < len(price_values):
                 cell_value = price_values[row - 1][0] if price_values[row - 1] else ""
                 if cell_value:
@@ -84,6 +89,9 @@ class SalesSheet:
                     if cleaned:
                         result[asin] = float(cleaned)
         return result
+
+    def _last_row_of(self, asin: str) -> int:
+        return self._asin_to_rows[asin][-1]
 
     @staticmethod
     def _find_column(headers: list[str], name: str) -> int:
@@ -93,21 +101,22 @@ class SalesSheet:
         raise ValueError(f"ヘッダーに '{name}' が見つかりません")
 
     def write_prices(self, prices: dict[str, float]) -> None:
-        targets = {
-            asin: self._asin_to_row[asin]
+        targets = [
+            (asin, row)
             for asin in prices
-            if asin in self._asin_to_row
-        }
+            if asin in self._asin_to_rows
+            for row in self._asin_to_rows[asin]
+        ]
         if not targets:
             return
         col = self._start_column
-        previous_prices = self._read_previous_prices(col + 1, max(targets.values()))
+        previous_prices = self._read_previous_prices(col + 1, max(row for _, row in targets))
 
         requests: list[dict] = []
         notes: dict[str, str] = {}
         cheaper: list[str] = []
         pricier: list[str] = []
-        for asin, row in targets.items():
+        for asin, row in targets:
             price = prices[asin]
             requests.append(
                 {"range": rowcol_to_a1(row, self._price_column), "values": [[price]]}
