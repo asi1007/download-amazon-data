@@ -1,6 +1,11 @@
+import pytest
+import requests
 from unittest.mock import Mock, patch
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
-from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
+from py_src.infrastructure.api.sp_api_sales_repository import (
+    SpApiSalesRepository,
+    SalesFetchFailureError,
+)
 
 
 def _make_response(json_data: dict, status_code: int = 200) -> Mock:
@@ -87,3 +92,71 @@ class TestSpApiSalesRepository:
         result = repo.get_weekly_sales(["B00EXAMPLE", "B00EXAMPLF"], "2026-04-19T15:00:00Z", "2026-04-26T15:00:00Z")
         assert result["B00EXAMPLE"].unit_count == 10
         assert result["B00EXAMPLF"].unit_count == 0
+
+
+def _sales_payload(unit_count: int) -> Mock:
+    return _make_response({
+        "payload": [{
+            "unitCount": unit_count,
+            "totalSales": {"amount": unit_count * 3000.0},
+            "orderCount": unit_count,
+        }],
+    })
+
+
+def _asins(count: int) -> list[str]:
+    return [f"B00EXAMP{i:02d}" for i in range(count)]
+
+
+@patch("py_src.infrastructure.api.sp_api_sales_repository.time.sleep")
+class TestPartialFailureTolerance:
+    def test_one_failing_asin_does_not_abort_the_others(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.side_effect = [
+            requests.exceptions.ConnectionError("Connection reset by peer"),
+            _sales_payload(1),
+            _sales_payload(7),
+        ]
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        result = repo.get_daily_sales(
+            ["B00EXAMPLE", "B00EXAMPLF"], "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z",
+        )
+
+        assert result["B00EXAMPLF"].unit_count == 1
+        assert result["B00EXAMPLE"].unit_count == 7
+
+    def test_asin_failing_every_pass_is_omitted_from_result(self, mock_sleep: Mock) -> None:
+        asin_list = _asins(20)
+        failing_asin = asin_list[0]
+
+        def respond(method: str, url: str) -> Mock:
+            if f"asin={failing_asin}" in url:
+                raise requests.exceptions.ConnectionError("Connection reset by peer")
+            return _sales_payload(3)
+
+        auth = Mock()
+        auth.request.side_effect = respond
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        result = repo.get_daily_sales(asin_list, "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z")
+
+        assert failing_asin not in result
+        assert len(result) == 19
+
+    def test_raises_when_failures_exceed_tolerance(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.side_effect = requests.exceptions.ConnectionError("Connection reset by peer")
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        with pytest.raises(SalesFetchFailureError):
+            repo.get_daily_sales(_asins(20), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z")
+
+    def test_successful_asins_are_requested_once(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.return_value = _sales_payload(2)
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        repo.get_daily_sales(_asins(10), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z")
+
+        assert auth.request.call_count == 10

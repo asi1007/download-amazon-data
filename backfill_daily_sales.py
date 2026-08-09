@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from gspread.utils import rowcol_to_a1
 from oauth2client.service_account import ServiceAccountCredentials
 
-from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.sales_sheet import (
@@ -78,8 +77,10 @@ def _write_sales_to_column(worksheet, sales_sheet, asin_list, asin_sales, label_
 
     total_amount = 0.0
     for asin in asin_list:
+        if asin not in asin_sales:
+            continue
         row = sales_sheet._asin_to_row[asin]
-        sales = asin_sales.get(asin, SalesInfo())
+        sales = asin_sales[asin]
         if row != 3:
             requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
         total_amount += sales.total_sales_amount

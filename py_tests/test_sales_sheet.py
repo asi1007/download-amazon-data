@@ -39,7 +39,7 @@ class TestSalesSheet:
         assert len(row3_request) == 1
         assert row3_request[0]["values"] == [[13500.0]]
 
-    def test_write_sales_nums_missing_asin_uses_default(self) -> None:
+    def test_write_sales_nums_totals_only_fetched_asins(self) -> None:
         sales_ws = _create_mock_worksheet()
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
@@ -53,6 +53,21 @@ class TestSalesSheet:
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         row3_request = [r for r in requests if r["range"] == row3_range]
         assert row3_request[0]["values"] == [[6000.0]]
+
+    def test_write_sales_nums_leaves_unfetched_asin_cell_empty(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        asin_sales = {
+            "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
+        }
+        sheet.write_sales_nums(asin_sales)
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written_ranges = {r["range"] for r in requests}
+        assert rowcol_to_a1(2, 3) in written_ranges
+        assert rowcol_to_a1(6, 3) not in written_ranges
 
     def test_write_sales_nums_applies_date_format_to_label_cells(self) -> None:
         sales_ws = _create_mock_worksheet()

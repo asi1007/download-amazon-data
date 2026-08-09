@@ -77,6 +77,20 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
   - 既存列を上書きする場合は inline スクリプトで target_col を指定
   - 「売上/日」の日付列構造は auto-memory `reference_sales_daily_sheet_structure.md` 参照
 
+## 日次売上の取得と書き込み（v0.8.0〜）
+
+`orderMetrics` は ASIN ごとに 1 リクエスト。75 ASIN で数分かかるため、途中の接続断で全体が落ちないようにしてある。
+
+- **接続断・タイムアウトはリトライする。** `SpApiAuthenticator.request` が 429 / 403 に加えて `ConnectionError` / `Timeout` も再試行する（最大5回）
+- **ASIN 単位の失敗は全体を止めない。** 失敗した ASIN だけを 1 度まとめて再試行する
+- **再試行しても取れなかった ASIN はセルを空のままにする。** 結果 dict にキーを入れないことで、販売 0 件と取得失敗を区別する。**欠測を 0 と書かないこと**（0 を書くと後から欠測と見分けられない）
+- **失敗が全 ASIN の 10% を超えたら `SalesFetchFailureError` で中断する。** 部分的に壊れた列を残さないため
+- 欠測が出た日は `backfill_daily_sales.py <日付>` で埋め直す
+
+### 日付ラベルの書式
+
+「売上/日」の行1・行4 には日付をシリアル整数で書き、**書き込みのたびに `apply_date_label_format()` で `numberFormat` を明示適用する**。列挿入時の隣接列からのフォーマット継承には依存しない（継承が効かず、シリアル値のまま表示される事故があった）。
+
 ## launchd スケジュール
 | plist | 実行 | スケジュール |
 |---|---|---|

@@ -54,8 +54,10 @@ class SalesSheet:
 
         total_amount = 0.0
         for asin in self._asin_list:
+            if asin not in asin_sales:
+                continue
             row = self._asin_to_row[asin]
-            sales = asin_sales.get(asin, SalesInfo())
+            sales = asin_sales[asin]
             if row != 3:
                 requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
             total_amount += sales.total_sales_amount
