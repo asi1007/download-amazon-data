@@ -54,6 +54,18 @@ class TestSalesSheet:
         row3_request = [r for r in requests if r["range"] == row3_range]
         assert row3_request[0]["values"] == [[6000.0]]
 
+    def test_write_sales_nums_applies_date_format_to_label_cells(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=2)})
+
+        sales_ws.format.assert_called_once_with(
+            [rowcol_to_a1(1, 3), rowcol_to_a1(4, 3)],
+            {"numberFormat": {"type": "DATE", "pattern": "dd"}},
+        )
+
     def test_write_prices_updates_cells(self) -> None:
         sales_ws = _create_mock_worksheet()
         sales_ws.get.return_value = [["2800"], ["2800"], ["2800"]]

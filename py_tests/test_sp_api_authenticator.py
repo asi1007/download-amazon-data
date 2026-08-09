@@ -1,4 +1,5 @@
 import pytest
+import requests
 from unittest.mock import Mock, patch
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 
@@ -74,6 +75,34 @@ class TestSpApiAuthenticator:
         resp = auth.request("GET", "https://example.com/api")
         assert resp.json() == {"data": "ok"}
         assert session.post.call_count == 2
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_request_retries_on_connection_error(self, mock_sleep: Mock) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "token"})
+        success = _make_response({"data": "ok"})
+        session.request.side_effect = [
+            requests.exceptions.ConnectionError("Connection reset by peer"),
+            success,
+        ]
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        resp = auth.request("GET", "https://example.com/api")
+        assert resp.json() == {"data": "ok"}
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_request_raises_after_persistent_connection_errors(self, mock_sleep: Mock) -> None:
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "token"})
+        session.request.side_effect = requests.exceptions.ConnectionError("reset")
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+        with pytest.raises(requests.exceptions.ConnectionError):
+            auth.request("GET", "https://example.com/api")
 
     def test_authenticate_failure_raises(self) -> None:
         session = Mock()

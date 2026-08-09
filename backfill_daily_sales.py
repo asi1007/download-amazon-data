@@ -11,7 +11,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet, HEADER_ROW
+from py_src.infrastructure.sheets.sales_sheet import (
+    SalesSheet,
+    HEADER_ROW,
+    apply_date_label_format,
+)
 
 JST = timezone(timedelta(hours=9))
 SHEETS_EPOCH = datetime(1899, 12, 30)
@@ -82,6 +86,7 @@ def _write_sales_to_column(worksheet, sales_sheet, asin_list, asin_sales, label_
     requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
 
     worksheet.batch_update(requests, value_input_option="RAW")
+    apply_date_label_format(worksheet, col)
 
 
 def _date_serial(jst_datetime: datetime) -> int:

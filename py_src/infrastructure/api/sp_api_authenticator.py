@@ -38,9 +38,15 @@ class SpApiAuthenticator:
         }
 
     def request(self, method: str, url: str, max_retries: int = 5) -> requests.Response:
+        connection_error: requests.exceptions.RequestException | None = None
         for attempt in range(max_retries):
             time.sleep(2 if attempt == 0 else 10)
-            response = self._session.request(method, url, headers=self.headers())
+            try:
+                response = self._session.request(method, url, headers=self.headers())
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
+                connection_error = error
+                continue
+            connection_error = None
             if response.status_code == 429:
                 continue
             if response.status_code == 403:
@@ -48,5 +54,7 @@ class SpApiAuthenticator:
                 continue
             response.raise_for_status()
             return response
+        if connection_error is not None:
+            raise connection_error
         response.raise_for_status()
         return response

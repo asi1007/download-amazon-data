@@ -7,6 +7,12 @@ from py_src.domain.value_objects.sales_info import SalesInfo
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
 SHEETS_EPOCH = datetime(1899, 12, 30)
+DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
+
+
+def apply_date_label_format(worksheet: Worksheet, col: int) -> None:
+    label_cells = [rowcol_to_a1(1, col), rowcol_to_a1(HEADER_ROW, col)]
+    worksheet.format(label_cells, DATE_LABEL_FORMAT)
 
 
 def _date_serial(jst_datetime: datetime) -> int:
@@ -56,6 +62,7 @@ class SalesSheet:
         requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
+        apply_date_label_format(self._worksheet, col)
 
     def get_selling_prices(self) -> dict[str, float]:
         if not self._asin_list:
