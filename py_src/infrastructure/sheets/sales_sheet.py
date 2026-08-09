@@ -1,8 +1,9 @@
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from gspread import Worksheet
-from gspread.utils import rowcol_to_a1
+from gspread.utils import rowcol_to_a1, ValueRenderOption
 from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.infrastructure.sheets.retry import retry_on_connection_error
 
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
@@ -45,11 +46,11 @@ class SalesSheet:
             self._asin_to_rows[stripped].append(i + 1)
         return self._asin_list
 
+    @retry_on_connection_error
     def write_sales_nums(self, asin_sales: dict[str, SalesInfo]) -> None:
-        col = self._start_column
-        self._worksheet.insert_cols([[""]], col)
         yesterday = datetime.now(JST) - timedelta(days=1)
         date_serial = _date_serial(yesterday)
+        col = self._resolve_column_for(date_serial)
 
         requests: list[dict] = []
         requests.append({"range": rowcol_to_a1(1, col), "values": [[date_serial]]})
@@ -70,6 +71,26 @@ class SalesSheet:
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
         apply_date_label_format(self._worksheet, col)
+
+    def _resolve_column_for(self, date_serial: int) -> int:
+        existing_column = self._find_serial_column(date_serial)
+        if existing_column is not None:
+            return existing_column
+        self._insert_labeled_column(date_serial)
+        return self._start_column
+
+    def _insert_labeled_column(self, date_serial: int) -> None:
+        label_column = [date_serial, *[""] * (HEADER_ROW - 2), date_serial]
+        self._worksheet.insert_cols([label_column], self._start_column)
+
+    def _find_serial_column(self, date_serial: int) -> int | None:
+        header = self._worksheet.row_values(
+            HEADER_ROW, value_render_option=ValueRenderOption.unformatted
+        )
+        for i, value in enumerate(header[self._start_column - 1:], start=self._start_column):
+            if value == date_serial:
+                return i
+        return None
 
     def get_selling_prices(self) -> dict[str, float]:
         if not self._asin_list:
@@ -100,6 +121,7 @@ class SalesSheet:
                 return i + 1
         raise ValueError(f"ヘッダーに '{name}' が見つかりません")
 
+    @retry_on_connection_error
     def write_prices(self, prices: dict[str, float]) -> None:
         targets = [
             (asin, row)

@@ -32,7 +32,8 @@ class TestSalesSheet:
         }
         sheet.write_sales_nums(asin_sales)
 
-        sales_ws.insert_cols.assert_called_once_with([[""]], 3)
+        assert sales_ws.insert_cols.call_count == 1
+        assert sales_ws.insert_cols.call_args[0][1] == 3
         row3_range = rowcol_to_a1(3, 3)
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         row3_request = [r for r in requests if r["range"] == row3_range]

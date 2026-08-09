@@ -74,7 +74,7 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
   ```bash
   .venv/bin/python backfill_daily_sales.py 2026-06-18 2026-06-19
   ```
-  - 既存列を上書きする場合は inline スクリプトで target_col を指定
+  - **同じ日付を再実行しても列は増えない**（既存列を見つけて上書きする）。取りこぼしの埋め直しに何度でも使える
   - 「売上/日」の日付列構造は auto-memory `reference_sales_daily_sheet_structure.md` 参照
 
 ## 日次売上の取得と書き込み（v0.8.0〜）
@@ -86,6 +86,15 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 - **再試行しても取れなかった ASIN はセルを空のままにする。** 結果 dict にキーを入れないことで、販売 0 件と取得失敗を区別する。**欠測を 0 と書かないこと**（0 を書くと後から欠測と見分けられない）
 - **失敗が全 ASIN の 10% を超えたら `SalesFetchFailureError` で中断する。** 部分的に壊れた列を残さないため
 - 欠測が出た日は `backfill_daily_sales.py <日付>` で埋め直す
+
+### 書き込みは冪等。列を無条件に挿入しない
+
+`ConnectionResetError(54)` は SP-API 側でも Google Sheets 側でも起きる。日次ジョブは SP-API 取得だけで4分かかるため、書き込み中に切断されると再実行のコストが高い。
+
+- **対象日の列が既にあれば再利用し、無ければ挿入する**（`_resolve_column_for`）。同じ日付で何度実行しても列は増えない
+- **列の挿入時に日付ラベル（行1・行4）も同時に書き込む。** 挿入だけ成功して落ちた場合、ラベルが無いと再試行時に見つけられず**列がもう1本入る**
+- `write_sales_nums` / `write_prices` は `@retry_on_connection_error` で 30秒間隔・最大3回リトライする。SP-API の再取得は挟まないので、4分の取得結果を捨てずに書き込みだけやり直せる
+- **gspread に自動リトライを仕込まないこと。** `BackOffHTTPClient` は experimental かつ 403 で無限リトライする既知問題がある。urllib3 の read リトライも、レスポンス読み取り中の切断では列の二重挿入を招く
 
 ### 同じ ASIN が複数行にあることを前提にする
 

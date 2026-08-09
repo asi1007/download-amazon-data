@@ -43,16 +43,11 @@ def main() -> None:
 
     for target_date_str in target_dates:
         _backfill_one_day(
-            worksheet,
-            sales_sheet,
-            asin_list,
-            sales_repository,
-            target_date_str,
-            insert_new_column=True,
+            worksheet, sales_sheet, asin_list, sales_repository, target_date_str,
         )
 
 
-def _backfill_one_day(worksheet, sales_sheet, asin_list, sales_repository, target_date_str, insert_new_column):
+def _backfill_one_day(worksheet, sales_sheet, asin_list, sales_repository, target_date_str):
     target_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=JST)
     next_day = target_date + timedelta(days=1)
     start_date_utc = target_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -62,9 +57,7 @@ def _backfill_one_day(worksheet, sales_sheet, asin_list, sales_repository, targe
     print(f"[{target_date_str}] SP-API 取得中... (シリアル: {label_serial})")
     asin_sales = sales_repository.get_daily_sales(asin_list, start_date_utc, end_date_utc)
 
-    col = sales_sheet._start_column
-    if insert_new_column:
-        worksheet.insert_cols([[]], col=col, inherit_from_before=False)
+    col = sales_sheet._resolve_column_for(label_serial)
 
     _write_sales_to_column(worksheet, sales_sheet, asin_list, asin_sales, label_serial, col)
     print(f"[{target_date_str}] 完了: {sum(1 for s in asin_sales.values() if s.unit_count > 0)}件販売あり")
