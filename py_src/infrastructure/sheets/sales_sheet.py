@@ -7,13 +7,20 @@ from py_src.infrastructure.sheets.retry import retry_on_connection_error
 
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
+TOTAL_AMOUNT_ROW = 3
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
+TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}}
 
 
-def apply_date_label_format(worksheet: Worksheet, col: int) -> None:
-    label_cells = [rowcol_to_a1(1, col), rowcol_to_a1(HEADER_ROW, col)]
-    worksheet.format(label_cells, DATE_LABEL_FORMAT)
+def apply_column_formats(worksheet: Worksheet, col: int) -> None:
+    worksheet.batch_format(
+        [
+            {"range": rowcol_to_a1(1, col), "format": DATE_LABEL_FORMAT},
+            {"range": rowcol_to_a1(HEADER_ROW, col), "format": DATE_LABEL_FORMAT},
+            {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "format": TOTAL_AMOUNT_FORMAT},
+        ]
+    )
 
 
 def _date_serial(jst_datetime: datetime) -> int:
@@ -62,15 +69,17 @@ class SalesSheet:
                 continue
             sales = asin_sales[asin]
             for row in self._asin_to_rows[asin]:
-                if row != 3:
+                if row != TOTAL_AMOUNT_ROW:
                     requests.append(
                         {"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]}
                     )
             total_amount += sales.total_sales_amount
-        requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
+        requests.append(
+            {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "values": [[total_amount]]}
+        )
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
-        apply_date_label_format(self._worksheet, col)
+        apply_column_formats(self._worksheet, col)
 
     def _resolve_column_for(self, date_serial: int) -> int:
         existing_column = self._find_serial_column(date_serial)

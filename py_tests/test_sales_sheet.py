@@ -77,10 +77,35 @@ class TestSalesSheet:
 
         sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=2)})
 
-        sales_ws.format.assert_called_once_with(
-            [rowcol_to_a1(1, 3), rowcol_to_a1(4, 3)],
-            {"numberFormat": {"type": "DATE", "pattern": "dd"}},
-        )
+        formats = sales_ws.batch_format.call_args[0][0]
+        date_format = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
+        applied = {f["range"]: f["format"] for f in formats}
+        assert applied[rowcol_to_a1(1, 3)] == date_format
+        assert applied[rowcol_to_a1(4, 3)] == date_format
+
+    def test_write_sales_nums_applies_thousand_yen_format_to_total_row(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)})
+
+        formats = sales_ws.batch_format.call_args[0][0]
+        applied = {f["range"]: f["format"] for f in formats}
+        assert applied[rowcol_to_a1(3, 3)] == {
+            "numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}
+        }
+
+    def test_write_sales_nums_keeps_total_amount_in_yen(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=502166.0)})
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row3_request = [r for r in requests if r["range"] == rowcol_to_a1(3, 3)]
+        assert row3_request[0]["values"] == [[502166.0]]
 
     def test_write_prices_updates_cells(self) -> None:
         sales_ws = _create_mock_worksheet()

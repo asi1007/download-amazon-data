@@ -13,7 +13,8 @@ from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesReposito
 from py_src.infrastructure.sheets.sales_sheet import (
     SalesSheet,
     HEADER_ROW,
-    apply_date_label_format,
+    TOTAL_AMOUNT_ROW,
+    apply_column_formats,
 )
 
 JST = timezone(timedelta(hours=9))
@@ -74,13 +75,13 @@ def _write_sales_to_column(worksheet, sales_sheet, asin_list, asin_sales, label_
             continue
         sales = asin_sales[asin]
         for row in sales_sheet._asin_to_rows[asin]:
-            if row != 3:
+            if row != TOTAL_AMOUNT_ROW:
                 requests.append({"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]})
         total_amount += sales.total_sales_amount
-    requests.append({"range": rowcol_to_a1(3, col), "values": [[total_amount]]})
+    requests.append({"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "values": [[total_amount]]})
 
     worksheet.batch_update(requests, value_input_option="RAW")
-    apply_date_label_format(worksheet, col)
+    apply_column_formats(worksheet, col)
 
 
 def _date_serial(jst_datetime: datetime) -> int:
