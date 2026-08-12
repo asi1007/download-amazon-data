@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from gspread import Worksheet
-from gspread.utils import rowcol_to_a1, ValueRenderOption
+from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.sheets.retry import retry_on_connection_error
 
@@ -11,6 +11,9 @@ TOTAL_AMOUNT_ROW = 3
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
 TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}}
+CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
+PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
+BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
 
 
 def apply_column_formats(worksheet: Worksheet, col: int) -> None:
@@ -145,6 +148,7 @@ class SalesSheet:
 
         requests: list[dict] = []
         notes: dict[str, str] = {}
+        written_cells: list[str] = []
         cheaper: list[str] = []
         pricier: list[str] = []
         for asin, row in targets:
@@ -154,6 +158,7 @@ class SalesSheet:
             )
             cell = rowcol_to_a1(row, col)
             notes[cell] = str(price)
+            written_cells.append(cell)
             previous = previous_prices.get(row)
             if previous is None:
                 continue
@@ -164,17 +169,31 @@ class SalesSheet:
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
         self._worksheet.update_notes(notes)
+        self._clear_backgrounds(written_cells)
         if cheaper:
-            self._worksheet.format(cheaper, {"backgroundColor": {"red": 1, "green": 0, "blue": 0}})
+            self._worksheet.format(cheaper, CHEAPER_FORMAT)
         if pricier:
-            self._worksheet.format(pricier, {"backgroundColor": {"red": 0, "green": 1, "blue": 1}})
+            self._worksheet.format(pricier, PRICIER_FORMAT)
+
+    def _clear_backgrounds(self, cells: list[str]) -> None:
+        sheet_id = self._worksheet.id
+        requests = [
+            {
+                "repeatCell": {
+                    "range": a1_range_to_grid_range(cell, sheet_id),
+                    "fields": BACKGROUND_COLOR_FIELD,
+                }
+            }
+            for cell in cells
+        ]
+        self._worksheet.spreadsheet.batch_update({"requests": requests})
 
     def _read_previous_prices(self, col: int, last_row: int) -> dict[int, float]:
         cell_range = f"{rowcol_to_a1(1, col)}:{rowcol_to_a1(last_row, col)}"
-        values = self._worksheet.get(cell_range)
+        recorded_notes = self._worksheet.get_notes(grid_range=cell_range)
         result: dict[int, float] = {}
-        for index, row_values in enumerate(values):
-            raw = row_values[0] if row_values else ""
+        for index, row_notes in enumerate(recorded_notes):
+            raw = row_notes[0] if row_notes else ""
             if not raw:
                 continue
             try:

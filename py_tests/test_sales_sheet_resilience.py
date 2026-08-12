@@ -128,7 +128,7 @@ class TestWriteRetriesOnConnectionError:
         sales_ws = Mock()
         sales_ws.row_values.return_value = HEADERS
         sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
-        sales_ws.get.return_value = [["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"]]
         sales_ws.batch_update.side_effect = [
             requests.exceptions.ConnectionError("reset"), None,
         ]

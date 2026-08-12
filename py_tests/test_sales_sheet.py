@@ -109,7 +109,7 @@ class TestSalesSheet:
 
     def test_write_prices_updates_cells(self) -> None:
         sales_ws = _create_mock_worksheet()
-        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -119,10 +119,87 @@ class TestSalesSheet:
         sales_ws.batch_update.assert_called()
 
 
+CHEAPER_COLOR = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
+PRICIER_COLOR = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
+
+
+def _colored_cells(sales_ws: Mock, color: dict) -> set[str]:
+    cells: set[str] = set()
+    for call in sales_ws.format.call_args_list:
+        if call[0][1] == color:
+            cells.update(call[0][0])
+    return cells
+
+
+class TestPriceChangeColoring:
+    def test_compares_today_price_against_previous_day_note(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sales_ws.get.return_value = [[""], ["3"], ["1"]]
+        sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_prices({"B00EXAMPLE": 2000.0, "B00EXAMPLF": 3500.0})
+
+        assert _colored_cells(sales_ws, CHEAPER_COLOR) == {rowcol_to_a1(2, 3)}
+        assert _colored_cells(sales_ws, PRICIER_COLOR) == {rowcol_to_a1(3, 3)}
+
+    def test_ignores_previous_day_cell_value(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sales_ws.get.return_value = [[""], ["3"], ["1"]]
+        sales_ws.get_notes.return_value = [[""], [""], [""]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_prices({"B00EXAMPLE": 2000.0, "B00EXAMPLF": 3500.0})
+
+        assert _colored_cells(sales_ws, CHEAPER_COLOR) == set()
+        assert _colored_cells(sales_ws, PRICIER_COLOR) == set()
+
+    def test_clears_background_of_cells_without_price_change(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_prices({"B00EXAMPLE": 2800.0, "B00EXAMPLF": 3500.0})
+
+        cleared = _cleared_background_ranges(sales_ws)
+        assert rowcol_to_a1(2, 3) in cleared
+        assert rowcol_to_a1(3, 3) in cleared
+
+    def test_clears_background_before_applying_new_color(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_prices({"B00EXAMPLE": 2000.0})
+
+        assert sales_ws.spreadsheet.batch_update.called
+        assert sales_ws.format.called
+
+
+def _cleared_background_ranges(sales_ws: Mock) -> set[str]:
+    cleared: set[str] = set()
+    for call in sales_ws.spreadsheet.batch_update.call_args_list:
+        for request in call[0][0]["requests"]:
+            repeat_cell = request.get("repeatCell")
+            if not repeat_cell:
+                continue
+            if repeat_cell["fields"] != "userEnteredFormat.backgroundColor":
+                continue
+            grid = repeat_cell["range"]
+            cleared.add(
+                rowcol_to_a1(grid["startRowIndex"] + 1, grid["startColumnIndex"] + 1)
+            )
+    return cleared
+
+
 class TestWritePricesQuota:
     def test_does_not_call_per_asin_write_apis(self) -> None:
         sales_ws = _create_mock_worksheet()
-        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -138,7 +215,7 @@ class TestWritePricesQuota:
             sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
             asins = [f"B00EXAMPL{i:02d}" for i in range(asin_count)]
             sales_ws.col_values.return_value = ["header", *asins]
-            sales_ws.get.return_value = [["2800"] for _ in range(asin_count + 1)]
+            sales_ws.get_notes.return_value = [["2800"] for _ in range(asin_count + 1)]
             sheet = SalesSheet(sales_worksheet=sales_ws)
             sheet.get_asin_list()
             sheet.write_prices({asin: 3000.0 for asin in asins})
@@ -154,7 +231,7 @@ class TestWritePricesQuota:
 
     def test_writes_all_notes_in_one_call(self) -> None:
         sales_ws = _create_mock_worksheet()
-        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -166,7 +243,7 @@ class TestWritePricesQuota:
 
     def test_colors_cheaper_and_pricier_cells_in_two_calls(self) -> None:
         sales_ws = _create_mock_worksheet()
-        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -229,7 +306,7 @@ class TestDuplicatedAsinRows:
 
     def test_write_prices_fills_every_duplicated_row(self) -> None:
         sales_ws = _create_mock_worksheet_with_duplicates()
-        sales_ws.get.return_value = [["2800"], ["2800"], ["2800"], ["2800"], ["2800"]]
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
