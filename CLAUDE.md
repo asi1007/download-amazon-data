@@ -46,14 +46,33 @@ tests/
   - シート名: `売上/今` / `売上/日` / `Amazon広告` / `sales_data` / `納品状況`
 
 ## 主要な公開関数（GAS）
-| 関数名 | 説明 |
-|--------|------|
-| `updateYesterdaySalesNum()` | 昨日の売上データを更新 |
-| `updateLastWeekSalesNum()` | 先週の売上データを更新 |
-| `downloadPrices()` | 競合価格情報を取得して記録 |
-| `updateInventoryStatus()` | FBA在庫状況を更新（**Python版に移行済み**、GAS trigger は無効化推奨） |
-| `updateWeeklyCostSummary()` | 週次コスト集計を実行 |
-| `getAmazonAdData()` | 最新の広告データを取得 |
+| 関数名 | 説明 | 定期実行 |
+|--------|------|---|
+| `updateYesterdaySalesNum()` | 昨日の売上データを更新 | **Python `daily` に移行済み** |
+| `updateLastWeekSalesNum()` | 先週の売上データを更新 | **Python `weekly` に移行済み** |
+| `downloadPrices()` | 競合価格情報を取得して記録 | **Python `daily` の `write_prices` に移行済み** |
+| `updateInventoryStatus()` | FBA在庫状況を更新 | **Python `inventory` に移行済み** |
+| `updateWeeklyCostSummary()` | 週次コスト集計を実行 | GAS のみ（手動） |
+| `getAmazonAdData()` | 最新の広告データを取得 | GAS のみ（手動） |
+| `updatePrice()` | シートで選択した行の価格を Amazon へ PATCH | GAS のみ（手動・メニュー） |
+
+### GAS の時間主導型トリガーは全廃した（2026-08-13）
+
+上表の移行済み4本のトリガーを削除した。**再作成しないこと。** 定期実行の正本は launchd（Python）。
+
+削除した理由は二重実行だけではない。**GAS の失敗は誰にも通知されない。** launchd 側は
+`notify-on-failure.sh` が拾って daily note に出るが、GAS は実行数の画面を見に行かない限り無音で死ぬ。
+実際に認証切れで**7日以上エラー率100%のまま放置**されていた（Python 側が同じ処理をしていたため実害は無かった）。
+
+### GAS の認証情報は Script Properties。`.env` とは別物
+
+`AuthService.js` は `PropertiesService.getScriptProperties()` から `API_KEY` / `API_SECRET` /
+`REFRESH_TOKEN` を読む。**`.env` を更新しても GAS には反映されない。**
+
+SP-API credentials を更新したら Script Properties も必ず更新する
+（[プロジェクトの設定](https://script.google.com/home/projects/1nzmywONXeGV05dsg_4oAKJZPWWUefKaMmikxib74yvykTG4y5k672rcr/settings)）。
+忘れると LWA が `401 {"error":"invalid_client"}` を返し、`updatePrice()` など GAS 固有機能が使えなくなる。
+切り分け手順は auto-memory `reference_sp_api_credentials_update_procedure.md`。
 
 ## Python エントリポイント (`main.py`)
 | サブコマンド | usecase | 用途 |
@@ -130,7 +149,9 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 | plist | 実行 | スケジュール |
 |---|---|---|
 | `com.automation.download-amazon-data.plist` | `main.py`（リアルタイム売上） | 30分ごと |
+| `com.automation.download-amazon-data-daily.plist` | `main.py daily`（昨日の売上＋競合価格） | 毎日 1:00 |
 | `com.automation.download-amazon-data-inventory.plist` | `main.py inventory` | 毎日 23:00 |
+| `com.automation.update-weekly-sales.plist` | `main.py weekly` | 月曜 9:00 |
 
 ```bash
 launchctl start com.automation.download-amazon-data-inventory  # 手動即時実行
