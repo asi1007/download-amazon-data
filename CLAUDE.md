@@ -112,7 +112,9 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 
 - **対象日の列が既にあれば再利用し、無ければ挿入する**（`_resolve_column_for`）。同じ日付で何度実行しても列は増えない
 - **列の挿入時に日付ラベル（行1・行4）も同時に書き込む。** 挿入だけ成功して落ちた場合、ラベルが無いと再試行時に見つけられず**列がもう1本入る**
-- `write_sales_nums` / `write_prices` は `@retry_on_connection_error` で 30秒間隔・最大3回リトライする。SP-API の再取得は挟まないので、4分の取得結果を捨てずに書き込みだけやり直せる
+- `_open_spreadsheet` / `write_sales_nums` / `write_prices` は `@retry_on_transient_error` で最大3回リトライする（30秒→60秒の指数バックオフ）。SP-API の再取得は挟まないので、4分の取得結果を捨てずに書き込みだけやり直せる
+- **リトライ対象は「切断」だけではない。** Sheets 側は `requests` の例外ではなく `gspread.exceptions.APIError` で 503 を返す。`RETRIABLE_STATUS_CODES`（429 / 500 / 502 / 503 / 504）のみ再試行し、**403・404 は即座に上げる**（権限エラーやシートID誤りを再試行しても無駄で、無限リトライの温床になる）
+- **シートを開く処理にもリトライが要る。** 2026-08-15 の日次ジョブは `client.open_by_key()` が 503 を返して落ちた。書き込み側だけ守っても、その手前で死ぬと 1 日分の列が丸ごと欠ける
 - **gspread に自動リトライを仕込まないこと。** `BackOffHTTPClient` は experimental かつ 403 で無限リトライする既知問題がある。urllib3 の read リトライも、レスポンス読み取り中の切断では列の二重挿入を招く
 
 ### 同じ ASIN が複数行にあることを前提にする

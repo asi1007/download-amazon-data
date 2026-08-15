@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
 from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.infrastructure.sheets.retry import retry_on_connection_error
+from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
@@ -56,7 +56,7 @@ class SalesSheet:
             self._asin_to_rows[stripped].append(i + 1)
         return self._asin_list
 
-    @retry_on_connection_error
+    @retry_on_transient_error
     def write_sales_nums(self, asin_sales: dict[str, SalesInfo]) -> None:
         yesterday = datetime.now(JST) - timedelta(days=1)
         date_serial = _date_serial(yesterday)
@@ -133,7 +133,7 @@ class SalesSheet:
                 return i + 1
         raise ValueError(f"ヘッダーに '{name}' が見つかりません")
 
-    @retry_on_connection_error
+    @retry_on_transient_error
     def write_prices(self, prices: dict[str, float]) -> None:
         targets = [
             (asin, row)

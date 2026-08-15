@@ -13,6 +13,7 @@ from py_src.infrastructure.sheets.sales_sheet import SalesSheet
 from py_src.infrastructure.sheets.amazon_ad_sheet import AmazonAdSheet
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
+from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
 from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
@@ -47,6 +48,7 @@ def _create_authenticator() -> SpApiAuthenticator:
     )
 
 
+@retry_on_transient_error
 def _open_spreadsheet() -> gspread.Spreadsheet:
     credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json")
     spreadsheet_id = os.getenv("SPREADSHEET_ID")
