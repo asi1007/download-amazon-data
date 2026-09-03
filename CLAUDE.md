@@ -81,6 +81,7 @@ SP-API credentials を更新したら Script Properties も必ず更新する
 | `daily` | `UpdateDailySalesUseCase` | 昨日の売上を「売上/日」へ追記 |
 | `weekly` | `UpdateWeeklySalesUseCase` | 週次売上集計 |
 | `inventory` | `UpdateInventoryStatusUseCase` | FBA在庫を「納品状況」へ書き出し（GAS版の移植、2026-06-17 追加）|
+| `ads` | `UpdateAdSalesUseCase` | 広告経由の売上個数を「売上/日」の広告行へ書く（直近14日を毎日上書き）|
 
 実行例:
 ```bash
@@ -146,6 +147,31 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 **塗る前に対象セルの背景色をクリアする**（`_clear_backgrounds`）。挿入した列は隣接列から書式を継承するため、クリアしないと価格が動いていない ASIN に前日の色が残る。`format` は `userEnteredFormat` にマージするだけで消せないので、`repeatCell` + `fields: userEnteredFormat.backgroundColor` を使う。
 
 前日のノートが無い日（実行が落ちた日）は比較せず色を付けない。欠測を「変化なし」と描き分けられなくなるため。
+
+## 広告経由の売上個数（v0.15.0〜）
+
+「売上/日」は各 ASIN 行の直下に**広告行**を1本持つ（A列は空、商品名列に「広告経由」、薄いグレー背景。2026-09-03 時点で **77行**）。
+`main.py ads` が Amazon Ads の `spAdvertisedProduct` レポート（DAILY）から
+`unitsSoldSameSku14d` を取り、この行へ書く。資格情報の読み込みは `load_ads_credentials(path)`
+（`py_src/infrastructure/api/ads_credentials_loader.py`）。
+
+- **日付列は作らない。** 列を作るのは `main.py daily` の責務で、広告ジョブは既にある列に
+  書き足すだけ。無い日付はスキップする
+- **毎日、直近14日分を上書きする。** 広告の成果はクリックから14日後まで加算されるため、
+  昨日分を1回書いて終わりにすると全ての過去日が過小のまま固定される
+- **レポートに現れなかった ASIN には 0 を書く。** 空欄のままにすると「広告未出稿」なのか
+  「取得に失敗した」のか後から見分けられないため
+- **日次売上ジョブとは別ジョブにする設計**（`com.automation.download-amazon-data-ads`、毎日 2:00）。
+  日次売上は SP-API だけで4分かかり10%失敗で中断する設計で、ここに Ads のレポート生成待ちを
+  足すと片方の失敗が両方を巻き込む
+- 資格情報は `data-engineer/dwld-ad-data/.env` を参照する（SP-API とは**別の** refresh_token）
+- 広告行は「A列が空 かつ 商品名列が『広告経由』かつ 直前に ASIN 行がある」で特定する。
+  位置だけに頼っていないので、空行が紛れ込んでも誤って書かない
+- 行を足すのは `insert_ad_rows.py`（冪等。`--dry-run` あり）
+- **広告経由の個数は同じ日の売上個数を超えないのが原則だが、少数は超えてよい。**
+  売上個数は「注文日」、広告経由の個数は「クリック日」（14日以内の購入を加算）に紐づくため、
+  クリックと購入が別日にまたがると超えることがある。実データ（77 ASIN × 14日 = 1078セル）で
+  超えたのは **20セル（1.9%）**、いずれも数個の差。**大半のセルで超えていたら指標の取り違い**
 
 ## launchd スケジュール
 | plist | 実行 | スケジュール |
