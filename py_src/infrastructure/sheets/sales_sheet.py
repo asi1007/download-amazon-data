@@ -146,12 +146,12 @@ class SalesSheet:
             if asin in self._asin_to_rows
             for row in self._asin_to_rows[asin]
         ]
-        if not targets:
-            return
         if self._sales_column is None:
             raise RuntimeError(
                 "write_prices は write_sales_nums で対象列を解決した後にしか呼び出せません"
             )
+        if not targets:
+            return
         col = self._sales_column
         previous_prices = self._read_previous_prices(col + 1, max(row for _, row in targets))
 

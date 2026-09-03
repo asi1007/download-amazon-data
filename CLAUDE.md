@@ -78,7 +78,8 @@ SP-API credentials を更新したら Script Properties も必ず更新する
 | サブコマンド | usecase | 用途 |
 |---|---|---|
 | なし（デフォルト） | `UpdateRealtimeSalesUseCase` | 「売上/今」を更新 |
-| `daily` | `UpdateDailySalesUseCase` | 昨日の売上を「売上/日」へ追記 |
+| `daily` | `UpdateDailySalesUseCase` | 昨日の売上を「売上/日」へ追記＋競合価格を書く |
+| `today` | `UpdateTodaySalesUseCase` | 本日の売上を「売上/日」へ毎時0分に上書き（**価格は書かない**、列が無ければ作る）|
 | `weekly` | `UpdateWeeklySalesUseCase` | 週次売上集計 |
 | `inventory` | `UpdateInventoryStatusUseCase` | FBA在庫を「納品状況」へ書き出し（GAS版の移植、2026-06-17 追加）|
 | `ads` | `UpdateAdSalesUseCase` | 広告経由の売上個数を「売上/日」の広告行へ書く（直近14日を毎日上書き）|
@@ -193,9 +194,17 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 |---|---|---|
 | `com.automation.download-amazon-data.plist` | `main.py`（リアルタイム売上） | 30分ごと |
 | `com.automation.download-amazon-data-daily.plist` | `main.py daily`（昨日の売上＋競合価格） | 毎日 1:00 |
+| `com.automation.download-amazon-data-today.plist` | `main.py today`（本日の売上を上書き、価格は書かない） | 毎時0分 |
 | `com.automation.download-amazon-data-ads.plist` | `main.py ads`（広告経由の売上個数） | 毎日 2:00 |
 | `com.automation.download-amazon-data-inventory.plist` | `main.py inventory` | 毎日 23:00 |
 | `com.automation.update-weekly-sales.plist` | `main.py weekly` | 月曜 9:00 |
+
+**`today` と `daily` は 1:00 に重なるが、通常は衝突しない。** 0:00 の `today` 実行で当日列（今日）が
+先に最左へ作られ、1:00 の `daily` は昨日の列（既存の別列）を解決して書くため、書き込み先の列が
+分かれる（`write_sales_nums` が対象日ごとに列を解決し、`write_prices` はその解決済み列を共有する。
+詳細は本ファイル上部の列書式の節および `py_src/infrastructure/sheets/sales_sheet.py` 参照）。
+衝突しうるのは「0:00 の `today` が落ちて当日列が未作成、かつ前日以前の列作成も失敗している」
+という複合障害のときだけ。
 
 ```bash
 launchctl start com.automation.download-amazon-data-inventory  # 手動即時実行

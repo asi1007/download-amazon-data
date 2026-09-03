@@ -219,11 +219,12 @@ class TestWritePricesQuota:
         def count_write_calls(asin_count: int) -> int:
             sales_ws = Mock()
             sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
-            asins = [f"B00EXAMPL{i:02d}" for i in range(asin_count)]
+            asins = [f"B00EXAM{i:03d}" for i in range(asin_count)]
             sales_ws.col_values.return_value = ["header", *asins]
             sales_ws.get_notes.return_value = [["2800"] for _ in range(asin_count + 1)]
             sheet = SalesSheet(sales_worksheet=sales_ws)
             sheet.get_asin_list()
+            sheet.write_sales_nums({})
             sheet.write_prices({asin: 3000.0 for asin in asins})
             return (
                 len(sales_ws.batch_update.call_args_list)
@@ -265,10 +266,12 @@ class TestWritePricesQuota:
         sales_ws = _create_mock_worksheet()
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
+        batch_update_calls_before = sales_ws.batch_update.call_count
         sheet.write_prices({"UNKNOWN": 3000.0})
 
-        sales_ws.batch_update.assert_not_called()
+        assert sales_ws.batch_update.call_count == batch_update_calls_before
         sales_ws.update_notes.assert_not_called()
 
 
