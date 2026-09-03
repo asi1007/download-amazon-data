@@ -72,3 +72,44 @@ class TestRealtimeSalesSheet:
 
         with pytest.raises(ValueError, match="個数"):
             sheet.get_asin_list()
+
+    def test_writes_values_at_the_row_where_the_asin_actually_is(self) -> None:
+        ws = self._make_worksheet(
+            ["ASIN", "個数", "売上"],
+            ["ASIN", "新商品", "B00EXAMPLE", "", "B00EXAMPLF"],
+        )
+        sheet = RealtimeSalesSheet(worksheet=ws)
+        sheet.get_asin_list()
+
+        sales_map: dict[str, RealtimeSalesResult] = {
+            "B00EXAMPLE": RealtimeSalesResult(
+                asin="B00EXAMPLE", unit_count=5, total_amount=10000.0
+            ),
+            "B00EXAMPLF": RealtimeSalesResult(
+                asin="B00EXAMPLF", unit_count=2, total_amount=4000.0
+            ),
+        }
+        sheet.write_realtime_sales(sales_map)
+
+        # A列: 行2=新商品, 行3=B00EXAMPLE, 行4=空, 行5=B00EXAMPLF
+        ws.update.assert_any_call("B2", [[""], [5], [""], [2]])
+        ws.update.assert_any_call("C2", [[""], [10000.0], [""], [4000.0]])
+
+    def test_ad_rows_between_asins_are_left_blank(self) -> None:
+        ws = self._make_worksheet(
+            ["ASIN", "個数", "売上"],
+            ["ASIN", "B00EXAMPLE", "", "B00EXAMPLF", ""],
+        )
+        sheet = RealtimeSalesSheet(worksheet=ws)
+        sheet.get_asin_list()
+
+        sales_map: dict[str, RealtimeSalesResult] = {
+            "B00EXAMPLE": RealtimeSalesResult(
+                asin="B00EXAMPLE", unit_count=1, total_amount=500.0
+            ),
+        }
+        sheet.write_realtime_sales(sales_map)
+
+        # 書き込む範囲は行2から「最後のASIN行」まで。末尾の広告行(行5)は範囲に入らない
+        ws.update.assert_any_call("B2", [[1], [""], [0]])
+        ws.update.assert_any_call("C2", [[500.0], [""], [0.0]])
