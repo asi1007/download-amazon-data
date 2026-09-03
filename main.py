@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from oauth2client.service_account import ServiceAccountCredentials
@@ -8,16 +9,22 @@ from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
 from py_src.infrastructure.api.sp_api_inventory_repository import SpApiInventoryRepository
+from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
+from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
 from py_src.infrastructure.sheets.sales_sheet import SalesSheet
 from py_src.infrastructure.sheets.amazon_ad_sheet import AmazonAdSheet
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
+from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
 from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
 from py_src.usecases.update_inventory_status import UpdateInventoryStatusUseCase
+from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
+
+ADS_ENV_PATH = Path(__file__).resolve().parents[1] / "dwld-ad-data" / ".env"
 
 
 def main() -> None:
@@ -111,6 +118,17 @@ def update_inventory_status() -> None:
     print(f"納品状況シートに {count} 件書き込みました")
 
 
+def update_ad_sales() -> None:
+    load_dotenv()
+    credentials = load_ads_credentials(ADS_ENV_PATH)
+    ads_repository = AdsUnitsRepository(credentials=credentials)
+    spreadsheet = _open_spreadsheet()
+    ad_sheet = AdSalesSheet(worksheet=spreadsheet.worksheet("売上/日"))
+    usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
+    written = usecase.execute()
+    print(f"広告経由の売上個数を {written} セル書き込みました")
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "daily":
@@ -119,5 +137,7 @@ if __name__ == "__main__":
         update_weekly_sales()
     elif len(sys.argv) > 1 and sys.argv[1] == "inventory":
         update_inventory_status()
+    elif len(sys.argv) > 1 and sys.argv[1] == "ads":
+        update_ad_sales()
     else:
         main()
