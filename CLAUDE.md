@@ -150,7 +150,9 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 
 ## 広告経由の売上個数（v0.15.0〜）
 
-「売上/日」は各 ASIN 行の直下に**広告行**を1本持つ（A列は空、商品名列に「広告経由」、薄いグレー背景。2026-09-03 時点で **77行**）。
+「売上/日」は各 ASIN 行の直下に**広告行**を1本持つ（A列は空、商品名列に「広告経由」。
+背景色は**行全体ではなく A列〜商品名列のみ**を薄いグレーで塗る（`insert_ad_rows.py` /
+`write_sales_sheet.py` とも同じ範囲）。2026-09-03 時点で **77行**）。
 `main.py ads` が Amazon Ads の `spAdvertisedProduct` レポート（DAILY）から
 `unitsSoldSameSku14d` を取り、この行へ書く。資格情報の読み込みは `load_ads_credentials(path)`
 （`py_src/infrastructure/api/ads_credentials_loader.py`）。
@@ -178,6 +180,7 @@ cd /Users/wadaatsushi/Documents/automation/data-engineer/download-amazon-data
 |---|---|---|
 | `com.automation.download-amazon-data.plist` | `main.py`（リアルタイム売上） | 30分ごと |
 | `com.automation.download-amazon-data-daily.plist` | `main.py daily`（昨日の売上＋競合価格） | 毎日 1:00 |
+| `com.automation.download-amazon-data-ads.plist` | `main.py ads`（広告経由の売上個数） | 毎日 2:00 |
 | `com.automation.download-amazon-data-inventory.plist` | `main.py inventory` | 毎日 23:00 |
 | `com.automation.update-weekly-sales.plist` | `main.py weekly` | 月曜 9:00 |
 
