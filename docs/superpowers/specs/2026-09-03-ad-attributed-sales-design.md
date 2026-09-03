@@ -198,10 +198,9 @@ POST https://advertising-api-fe.amazon.com/reporting/reports
 
 ## リスクと未検証事項
 
-- **`groupBy: ["advertiser"]` で `unitsSoldSameSku14d` が使えるかは未検証。**
-  実装の最初に1日分だけ取得して列名の疎通を確認する。使えなければ `groupBy` を
-  `["advertiser", "campaign"]` に変えて ASIN 単位で合算するか、`unitsSoldClicks14d` に落とす。
-  どちらに倒すかは疎通確認の結果を見て決める
+- **`groupBy: ["advertiser"]` + `unitsSoldSameSku14d` は実物で疎通確認済み（2026-09-03）。**
+  `tools/check_ads_columns.py` で 2026-09-01 分を取得し、フォールバック無しで1回目のリクエストが通った。
+  46 ASIN 分の行が返り、代表値は上位から `B0FR3CZRGP: 74`, `B0FKH5PGQ6: 67`, `B0F9WPDW92: 48`（いずれも同 ASIN の複数キャンペーン分を合算した値）
 - Ads API のレポートは生成に数分かかる。`MAX_POLLS` を超えたらタイムアウトさせ、その日は書かない
 - 行の挿入は「売上/今」の行数も同じだけ増やす。条件付き書式やグラフの範囲が
   意図せず広がっていないか、移行後に目視で確かめる
