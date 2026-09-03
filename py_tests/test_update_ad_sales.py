@@ -1,7 +1,10 @@
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import Mock
 
-from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
+import pytest
+
+from py_src.domain.value_objects.ad_write_result import AdWriteResult
+from py_src.usecases.update_ad_sales import EmptyAdsReportError, UpdateAdSalesUseCase
 
 JST = timezone(timedelta(hours=9))
 
@@ -9,9 +12,9 @@ JST = timezone(timedelta(hours=9))
 class TestUpdateAdSalesUseCase:
     def test_requests_the_last_14_days_ending_yesterday(self) -> None:
         ad_sheet = Mock()
-        ad_sheet.write_ad_units.return_value = 0
+        ad_sheet.write_ad_units.return_value = AdWriteResult(cells_written=0)
         ads_repository = Mock()
-        ads_repository.get_daily_units.return_value = {}
+        ads_repository.get_daily_units.return_value = {"2026-06-02": {"B00EXAMPLE": 1}}
         usecase = UpdateAdSalesUseCase(
             ad_sheet=ad_sheet, ads_repository=ads_repository, days=14,
         )
@@ -25,12 +28,12 @@ class TestUpdateAdSalesUseCase:
 
     def test_resolves_ad_rows_before_writing(self) -> None:
         ad_sheet = Mock()
-        ad_sheet.write_ad_units.return_value = 5
+        ad_sheet.write_ad_units.return_value = AdWriteResult(cells_written=5)
         ads_repository = Mock()
         ads_repository.get_daily_units.return_value = {"2026-06-02": {"B00EXAMPLE": 3}}
         usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
 
-        written = usecase.execute_range(date(2026, 6, 1), date(2026, 6, 3))
+        result = usecase.execute_range(date(2026, 6, 1), date(2026, 6, 3))
 
         ad_sheet.get_ad_rows.assert_called_once()
         ad_sheet.write_ad_units.assert_called_once_with({
@@ -38,7 +41,7 @@ class TestUpdateAdSalesUseCase:
             "2026-06-02": {"B00EXAMPLE": 3},
             "2026-06-03": {},
         })
-        assert written == 5
+        assert result.cells_written == 5
 
     def test_report_failure_writes_nothing(self) -> None:
         ad_sheet = Mock()
@@ -55,9 +58,9 @@ class TestUpdateAdSalesUseCase:
 
     def test_backfill_range_overrides_the_default_window(self) -> None:
         ad_sheet = Mock()
-        ad_sheet.write_ad_units.return_value = 0
+        ad_sheet.write_ad_units.return_value = AdWriteResult(cells_written=0)
         ads_repository = Mock()
-        ads_repository.get_daily_units.return_value = {}
+        ads_repository.get_daily_units.return_value = {"2026-06-15": {"B00EXAMPLE": 1}}
         usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
 
         usecase.execute_range(date(2026, 6, 1), date(2026, 6, 30))
@@ -66,13 +69,30 @@ class TestUpdateAdSalesUseCase:
             date(2026, 6, 1), date(2026, 6, 30),
         )
 
-    def test_single_day_with_no_ad_sales_still_reaches_the_sheet(self) -> None:
+    def test_day_with_zero_units_but_a_present_row_still_reaches_the_sheet(self) -> None:
+        # レポートが「その日・そのASINは0件」という行を返したケース。
+        # units_by_date に実データ（値が0の行も含む）があれば空レポートとは扱わない。
         ad_sheet = Mock()
-        ad_sheet.write_ad_units.return_value = 0
+        ad_sheet.write_ad_units.return_value = AdWriteResult(cells_written=0)
+        ads_repository = Mock()
+        ads_repository.get_daily_units.return_value = {"2026-06-02": {"B00EXAMPLE": 0}}
+        usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
+
+        usecase.execute_range(date(2026, 6, 1), date(2026, 6, 3))
+
+        ad_sheet.write_ad_units.assert_called_once_with({
+            "2026-06-01": {},
+            "2026-06-02": {"B00EXAMPLE": 0},
+            "2026-06-03": {},
+        })
+
+    def test_empty_report_over_the_whole_range_raises_and_writes_nothing(self) -> None:
+        ad_sheet = Mock()
         ads_repository = Mock()
         ads_repository.get_daily_units.return_value = {}
         usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
 
-        usecase.execute_range(date(2026, 6, 1), date(2026, 6, 1))
+        with pytest.raises(EmptyAdsReportError):
+            usecase.execute_range(date(2026, 6, 1), date(2026, 6, 14))
 
-        ad_sheet.write_ad_units.assert_called_once_with({"2026-06-01": {}})
+        ad_sheet.write_ad_units.assert_not_called()

@@ -4,6 +4,7 @@ from datetime import date, datetime
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, ValueRenderOption
 
+from py_src.domain.value_objects.ad_write_result import AdWriteResult
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 HEADER_ROW = 4
@@ -33,19 +34,20 @@ class AdSalesSheet:
         return self._ad_rows
 
     @retry_on_transient_error
-    def write_ad_units(self, units_by_date: dict[str, dict[str, int]]) -> int:
+    def write_ad_units(self, units_by_date: dict[str, dict[str, int]]) -> AdWriteResult:
         self._serial_to_column = self._read_date_columns()
+        columns_by_date = {day: self._columns_for(day) for day in units_by_date}
+        skipped_dates = tuple(day for day, columns in columns_by_date.items() if not columns)
         requests = [
             {"range": rowcol_to_a1(row, column), "values": [[by_asin.get(asin, 0)]]}
             for day, by_asin in units_by_date.items()
-            for column in self._columns_for(day)
+            for column in columns_by_date[day]
             for asin, rows in self._ad_rows.items()
             for row in rows
         ]
-        if not requests:
-            return 0
-        self._worksheet.batch_update(requests, value_input_option="RAW")
-        return len(requests)
+        if requests:
+            self._worksheet.batch_update(requests, value_input_option="RAW")
+        return AdWriteResult(cells_written=len(requests), skipped_dates=skipped_dates)
 
     def _columns_for(self, day: str) -> list[int]:
         serial = _date_serial(datetime.strptime(day, "%Y-%m-%d").date())

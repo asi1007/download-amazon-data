@@ -125,8 +125,13 @@ def update_ad_sales() -> None:
     spreadsheet = _open_spreadsheet()
     ad_sheet = AdSalesSheet(worksheet=spreadsheet.worksheet("売上/日"))
     usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
-    written = usecase.execute()
-    print(f"広告経由の売上個数を {written} セル書き込みました")
+    result = usecase.execute()
+    print(f"広告経由の売上個数を {result.cells_written} セル書き込みました")
+    if result.skipped_dates:
+        print(
+            f"日付列が無くスキップ（{len(result.skipped_dates)}日）: "
+            f"{', '.join(result.skipped_dates)}"
+        )
 
 
 if __name__ == "__main__":

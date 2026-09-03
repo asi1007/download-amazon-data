@@ -42,11 +42,20 @@ def main() -> None:
     usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
 
     total = 0
+    skipped_dates: list[str] = []
     for chunk_start, chunk_end in split_into_chunks(start, end):
-        written = usecase.execute_range(chunk_start, chunk_end)
-        print(f"{chunk_start} 〜 {chunk_end}: {written} セル")
-        total += written
+        result = usecase.execute_range(chunk_start, chunk_end)
+        print(f"{chunk_start} 〜 {chunk_end}: {result.cells_written} セル")
+        if result.skipped_dates:
+            print(
+                f"  日付列が無くスキップ（{len(result.skipped_dates)}日）: "
+                f"{', '.join(result.skipped_dates)}"
+            )
+        total += result.cells_written
+        skipped_dates.extend(result.skipped_dates)
     print(f"合計 {total} セル書き込みました")
+    if skipped_dates:
+        print(f"合計スキップ {len(skipped_dates)}日: {', '.join(skipped_dates)}")
 
 
 if __name__ == "__main__":

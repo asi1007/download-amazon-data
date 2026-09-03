@@ -52,9 +52,10 @@ class TestAdSalesSheet:
         sheet = AdSalesSheet(worksheet=worksheet)
         sheet.get_ad_rows()
 
-        written = sheet.write_ad_units({"2026-09-01": {"B00EXAMPLE": 3, "B00EXAMPLF": 1}})
+        result = sheet.write_ad_units({"2026-09-01": {"B00EXAMPLE": 3, "B00EXAMPLF": 1}})
 
-        assert written == 3
+        assert result.cells_written == 3
+        assert result.skipped_dates == ()
         requests = worksheet.batch_update.call_args[0][0]
         by_range = {r["range"]: r["values"] for r in requests}
         assert by_range[rowcol_to_a1(7, 3)] == [[3]]
@@ -66,10 +67,24 @@ class TestAdSalesSheet:
         sheet = AdSalesSheet(worksheet=worksheet)
         sheet.get_ad_rows()
 
-        written = sheet.write_ad_units({"2026-08-01": {"B00EXAMPLE": 3}})
+        result = sheet.write_ad_units({"2026-08-01": {"B00EXAMPLE": 3}})
 
-        assert written == 0
+        assert result.cells_written == 0
+        assert result.skipped_dates == ("2026-08-01",)
         worksheet.batch_update.assert_not_called()
+
+    def test_reports_skipped_dates_alongside_written_dates(self) -> None:
+        worksheet = _make_worksheet()
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        result = sheet.write_ad_units({
+            "2026-09-01": {"B00EXAMPLE": 3},
+            "2026-08-01": {"B00EXAMPLE": 1},
+        })
+
+        assert result.cells_written == 3
+        assert result.skipped_dates == ("2026-08-01",)
 
     def test_writes_zero_for_asins_absent_from_the_report(self) -> None:
         worksheet = _make_worksheet()
@@ -87,9 +102,9 @@ class TestAdSalesSheet:
         sheet = AdSalesSheet(worksheet=worksheet)
         sheet.get_ad_rows()
 
-        written = sheet.write_ad_units({"2026-09-01": {}})
+        result = sheet.write_ad_units({"2026-09-01": {}})
 
-        assert written == 3
+        assert result.cells_written == 3
         requests = worksheet.batch_update.call_args[0][0]
         assert all(r["values"] == [[0]] for r in requests)
 

@@ -78,9 +78,14 @@ class AdsUnitsRepository:
     def _wait_for_report(self, report_id: str) -> str:
         url = f"{self._credentials.api_base_url}/reporting/reports/{report_id}"
         for _ in range(self._max_polls):
-            status = self._session.get(
+            response = self._session.get(
                 url, headers=self._headers(), timeout=TIMEOUT_SECONDS
-            ).json()
+            )
+            if response.status_code >= 400:
+                raise AdsReportError(
+                    f"広告レポートのポーリングに失敗: {response.status_code} {response.text[:200]}"
+                )
+            status = response.json()
             if status.get("status") == "COMPLETED":
                 return str(status["url"])
             if status.get("status") == "FAILURE":

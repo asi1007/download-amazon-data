@@ -173,6 +173,20 @@ class TestAdsUnitsRepository:
         with pytest.raises(AdsReportError, match="access_token がありません"):
             repository.get_daily_units(date(2026, 9, 1), date(2026, 9, 1))
 
+    def test_poll_http_error_raises_instead_of_timing_out(self) -> None:
+        session = Mock()
+        session.post.return_value = _response(payload={"reportId": "r1"})
+        session.get.return_value = _response(status_code=401, payload={"error": "invalid_client"})
+        repository = AdsUnitsRepository(
+            credentials=CREDENTIALS, session=session, poll_interval_seconds=0, max_polls=3,
+        )
+        repository._access_token = "cached"  # noqa: SLF001
+
+        with pytest.raises(AdsReportError, match="401"):
+            repository.get_daily_units(date(2026, 9, 1), date(2026, 9, 2))
+
+        assert session.get.call_count == 1
+
     def test_download_url_failure_raises(self) -> None:
         session = Mock()
         session.post.return_value = _response(payload={"reportId": "r1"})
