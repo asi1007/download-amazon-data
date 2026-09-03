@@ -20,6 +20,7 @@ from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
+from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase
 from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
 from py_src.usecases.update_inventory_status import UpdateInventoryStatusUseCase
 from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
@@ -84,6 +85,20 @@ def update_daily_sales() -> None:
     usecase.execute()
 
 
+def update_today_sales() -> None:
+    load_dotenv()
+    authenticator = _create_authenticator()
+    sales_repository = SpApiSalesRepository(authenticator=authenticator)
+    spreadsheet = _open_spreadsheet()
+    sales_ws = spreadsheet.worksheet("売上/日")
+    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    usecase = UpdateTodaySalesUseCase(
+        sales_sheet=sales_sheet,
+        sales_repository=sales_repository,
+    )
+    usecase.execute()
+
+
 def update_weekly_sales() -> None:
     load_dotenv()
     authenticator = _create_authenticator()
@@ -138,6 +153,8 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "daily":
         update_daily_sales()
+    elif len(sys.argv) > 1 and sys.argv[1] == "today":
+        update_today_sales()
     elif len(sys.argv) > 1 and sys.argv[1] == "weekly":
         update_weekly_sales()
     elif len(sys.argv) > 1 and sys.argv[1] == "inventory":

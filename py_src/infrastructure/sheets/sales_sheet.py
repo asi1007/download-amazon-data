@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date, timezone, timedelta
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
 from py_src.domain.value_objects.sales_info import SalesInfo
@@ -26,8 +26,8 @@ def apply_column_formats(worksheet: Worksheet, col: int) -> None:
     )
 
 
-def _date_serial(jst_datetime: datetime) -> int:
-    naive = datetime(jst_datetime.year, jst_datetime.month, jst_datetime.day)
+def _date_serial(target_date: date) -> int:
+    naive = datetime(target_date.year, target_date.month, target_date.day)
     return (naive - SHEETS_EPOCH).days
 
 
@@ -38,6 +38,7 @@ class SalesSheet:
         self._asin_to_rows: dict[str, list[int]] = {}
         self._start_column: int = 0
         self._price_column: int = 0
+        self._sales_column: int | None = None
 
     def get_asin_list(self) -> list[str]:
         headers = self._worksheet.row_values(HEADER_ROW)
@@ -57,10 +58,14 @@ class SalesSheet:
         return self._asin_list
 
     @retry_on_transient_error
-    def write_sales_nums(self, asin_sales: dict[str, SalesInfo]) -> None:
-        yesterday = datetime.now(JST) - timedelta(days=1)
-        date_serial = _date_serial(yesterday)
+    def write_sales_nums(
+        self, asin_sales: dict[str, SalesInfo], target_date: date | None = None
+    ) -> None:
+        if target_date is None:
+            target_date = (datetime.now(JST) - timedelta(days=1)).date()
+        date_serial = _date_serial(target_date)
         col = self._resolve_column_for(date_serial)
+        self._sales_column = col
 
         requests: list[dict] = []
         requests.append({"range": rowcol_to_a1(1, col), "values": [[date_serial]]})
@@ -143,7 +148,11 @@ class SalesSheet:
         ]
         if not targets:
             return
-        col = self._start_column
+        if self._sales_column is None:
+            raise RuntimeError(
+                "write_prices は write_sales_nums で対象列を解決した後にしか呼び出せません"
+            )
+        col = self._sales_column
         previous_prices = self._read_previous_prices(col + 1, max(row for _, row in targets))
 
         requests: list[dict] = []

@@ -112,6 +112,7 @@ class TestSalesSheet:
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         prices = {"B00EXAMPLE": 3000.0}
         sheet.write_prices(prices)
@@ -138,6 +139,7 @@ class TestPriceChangeColoring:
         sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 2000.0, "B00EXAMPLF": 3500.0})
 
@@ -150,6 +152,7 @@ class TestPriceChangeColoring:
         sales_ws.get_notes.return_value = [[""], [""], [""]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 2000.0, "B00EXAMPLF": 3500.0})
 
@@ -161,6 +164,7 @@ class TestPriceChangeColoring:
         sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 2800.0, "B00EXAMPLF": 3500.0})
 
@@ -173,6 +177,7 @@ class TestPriceChangeColoring:
         sales_ws.get_notes.return_value = [[""], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 2000.0})
 
@@ -202,6 +207,7 @@ class TestWritePricesQuota:
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 3000.0, "B00EXAMPLF": 2000.0, "B00EXAMPLG": 2800.0})
 
@@ -234,6 +240,7 @@ class TestWritePricesQuota:
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 3000.0, "B00EXAMPLF": 2000.0})
 
@@ -246,6 +253,7 @@ class TestWritePricesQuota:
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices(
             {"B00EXAMPLE": 2000.0, "B00EXAMPLF": 3000.0, "B00EXAMPLG": 2800.0}
@@ -309,10 +317,11 @@ class TestDuplicatedAsinRows:
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
+        sheet.write_sales_nums({})
 
         sheet.write_prices({"B00EXAMPLE": 3000.0})
 
-        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        requests = sales_ws.batch_update.call_args_list[-1][0][0]
         written_ranges = {r["range"] for r in requests}
         assert rowcol_to_a1(2, 5) in written_ranges
         assert rowcol_to_a1(4, 5) in written_ranges

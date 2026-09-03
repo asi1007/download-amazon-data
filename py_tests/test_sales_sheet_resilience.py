@@ -129,12 +129,15 @@ class TestWriteRetriesOnConnectionError:
         sales_ws.row_values.return_value = HEADERS
         sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
         sales_ws.get_notes.return_value = [["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+        sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=1)})
+
+        calls_before_write_prices = sales_ws.batch_update.call_count
         sales_ws.batch_update.side_effect = [
             requests.exceptions.ConnectionError("reset"), None,
         ]
-        sheet = SalesSheet(sales_worksheet=sales_ws)
-        sheet.get_asin_list()
 
         sheet.write_prices({"B00EXAMPLE": 3000.0})
 
-        assert sales_ws.batch_update.call_count == 2
+        assert sales_ws.batch_update.call_count - calls_before_write_prices == 2
