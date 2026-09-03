@@ -2,6 +2,8 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime, timedelta
 
+from dotenv import load_dotenv
+
 from main import ADS_ENV_PATH, _open_spreadsheet
 from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
@@ -32,6 +34,7 @@ def main() -> None:
     start = datetime.strptime(sys.argv[1], "%Y-%m-%d").date()
     end = datetime.strptime(sys.argv[2], "%Y-%m-%d").date()
 
+    load_dotenv()
     credentials = load_ads_credentials(ADS_ENV_PATH)
     ads_repository = AdsUnitsRepository(credentials=credentials)
     spreadsheet = _open_spreadsheet()
