@@ -89,8 +89,12 @@ class AdsUnitsRepository:
         raise AdsReportError(f"広告レポート {report_id} の生成がタイムアウトしました")
 
     def _download_rows(self, download_url: str) -> list[dict[str, Any]]:
-        raw = self._session.get(download_url, timeout=DOWNLOAD_TIMEOUT_SECONDS).content
-        return json.loads(gzip.decompress(raw).decode())
+        response = self._session.get(download_url, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+        if response.status_code >= 400:
+            raise AdsReportError(
+                f"広告レポートのダウンロードに失敗: {response.status_code}"
+            )
+        return json.loads(gzip.decompress(response.content).decode())
 
     @staticmethod
     def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
@@ -131,5 +135,11 @@ class AdsUnitsRepository:
             raise AdsReportError(
                 f"Ads API のトークン取得に失敗: {response.status_code} {response.text[:200]}"
             )
-        self._access_token = str(response.json()["access_token"])
+        payload = response.json()
+        token = payload.get("access_token")
+        if not token:
+            raise AdsReportError(
+                f"Ads API のトークン応答に access_token がありません: {str(payload)[:200]}"
+            )
+        self._access_token = str(token)
         return self._access_token
