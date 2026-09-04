@@ -8,7 +8,8 @@ from py_src.infrastructure.sheets.retry import retry_on_transient_error
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
 TOTAL_AMOUNT_ROW = 3
-# 行1・行4は日付ラベル、行3は総売上、行2は取得時刻。ASIN行はこれらを避ける。
+# 行1〜4（日付ラベル・取得時刻・総売上）は予約行。ASINは必ず行5以降にある前提で
+# `row > HEADER_ROW` によりASINループの書き込みから一括で除外する。
 FETCH_TIME_ROW = 2
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
@@ -86,7 +87,7 @@ class SalesSheet:
                 continue
             sales = asin_sales[asin]
             for row in self._asin_to_rows[asin]:
-                if row not in (TOTAL_AMOUNT_ROW, FETCH_TIME_ROW):
+                if row > HEADER_ROW:
                     requests.append(
                         {"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]}
                     )
@@ -154,6 +155,7 @@ class SalesSheet:
             for asin in prices
             if asin in self._asin_to_rows
             for row in self._asin_to_rows[asin]
+            if row > HEADER_ROW
         ]
         if self._sales_column is None:
             raise RuntimeError(

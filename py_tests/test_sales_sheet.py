@@ -223,11 +223,12 @@ class TestWritePricesQuota:
 
     def test_write_calls_stay_constant_as_asins_grow(self) -> None:
         def count_write_calls(asin_count: int) -> int:
+            # 実運用の行構成（行1〜4は予約行、ASINは行5以降）を再現する。
             sales_ws = Mock()
             sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
             asins = [f"B00EXAM{i:03d}" for i in range(asin_count)]
-            sales_ws.col_values.return_value = ["header", *asins]
-            sales_ws.get_notes.return_value = [["2800"] for _ in range(asin_count + 1)]
+            sales_ws.col_values.return_value = ["header", "", "合計", "header4", *asins]
+            sales_ws.get_notes.return_value = [["2800"] for _ in range(4 + asin_count)]
             sheet = SalesSheet(sales_worksheet=sales_ws)
             sheet.get_asin_list()
             sheet.write_sales_nums({})
@@ -421,23 +422,37 @@ class TestFetchTimeRow:
         assert inserted_label_column[FETCH_TIME_ROW - 1] == ""
 
 
-def _create_mock_worksheet_with_asin_colliding_reserved_rows() -> Mock:
+def _create_mock_worksheet_with_asin_on_reserved_row(row: int) -> Mock:
     # get_asin_list は「A列が10文字の文字列」というだけでASIN行を判定しており、
     # ASINが5行目以降にあることをコードとしては一切保証していない（実運用上の慣習に過ぎない）。
-    # ここではその慣習が破られた場合に write_sales_nums のガード
-    # (`row not in (TOTAL_AMOUNT_ROW, FETCH_TIME_ROW)`) が実際に機能することを確かめるため、
-    # あえてASINをFETCH_TIME_ROW(=2)・TOTAL_AMOUNT_ROW(=3)と同じ行に置く。
+    # ここではその慣習が破られた場合に write_sales_nums / write_prices のガード
+    # (`row > HEADER_ROW`) が実際に機能することを確かめるため、
+    # あえてASINを予約行（1〜4行目のいずれか）に置く。
+    col_values = ["filler1", "filler2", "filler3", "filler4"]
+    col_values[row - 1] = "B00EXAMPLE"
     sales_ws = Mock()
     sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
-    sales_ws.col_values.return_value = [
-        "header", "B00EXAMPLE", "B00EXAMPLF", "header4",
-    ]
+    sales_ws.col_values.return_value = col_values
     return sales_ws
 
 
 class TestReservedRowGuard:
-    def test_skips_writing_unit_count_to_fetch_time_row(self) -> None:
-        sales_ws = _create_mock_worksheet_with_asin_colliding_reserved_rows()
+    def test_skips_writing_unit_count_when_asin_lands_on_row1(self) -> None:
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(1)
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=9, total_sales_amount=100.0)}
+        )
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row1_requests = [r for r in requests if r["range"] == rowcol_to_a1(1, 3)]
+        # ASINの個数書き込みがガードで抑止され、日付ラベルの1件だけが残る。
+        assert len(row1_requests) == 1
+
+    def test_skips_writing_unit_count_when_asin_lands_on_fetch_time_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(FETCH_TIME_ROW)
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -447,21 +462,54 @@ class TestReservedRowGuard:
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         row2_requests = [r for r in requests if r["range"] == rowcol_to_a1(FETCH_TIME_ROW, 3)]
-        # ASIN(B00EXAMPLE)の個数書き込みがガードで抑止され、取得時刻の1件だけが残る。
+        # ASINの個数書き込みがガードで抑止され、取得時刻の1件だけが残る。
         assert len(row2_requests) == 1
         assert re.fullmatch(r"\d{2}:\d{2}", row2_requests[0]["values"][0][0])
 
-    def test_skips_writing_unit_count_to_total_amount_row(self) -> None:
-        sales_ws = _create_mock_worksheet_with_asin_colliding_reserved_rows()
+    def test_skips_writing_unit_count_when_asin_lands_on_total_amount_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(TOTAL_AMOUNT_ROW)
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
         sheet.write_sales_nums(
-            {"B00EXAMPLF": SalesInfo(unit_count=9, total_sales_amount=100.0)}
+            {"B00EXAMPLE": SalesInfo(unit_count=9, total_sales_amount=100.0)}
         )
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         row3_requests = [r for r in requests if r["range"] == rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)]
-        # ASIN(B00EXAMPLF)の個数書き込みがガードで抑止され、総売上の1件だけが残る。
+        # ASINの個数書き込みがガードで抑止され、総売上の1件だけが残る。
         assert len(row3_requests) == 1
         assert row3_requests[0]["values"] == [[100.0]]
+
+    def test_skips_writing_unit_count_when_asin_lands_on_header_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(HEADER_ROW)
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=9, total_sales_amount=100.0)}
+        )
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row4_requests = [r for r in requests if r["range"] == rowcol_to_a1(HEADER_ROW, 3)]
+        # ASINの個数書き込みがガードで抑止され、日付ラベル（行4）の1件だけが残る。
+        assert len(row4_requests) == 1
+
+    def test_write_prices_skips_note_and_color_when_asin_lands_on_reserved_row(self) -> None:
+        # write_prices は write_sales_nums と同じ self._asin_to_rows を回すため、
+        # 同じ罠（予約行にノート・背景色が付く）を踏みうる。write_sales_nums 側と
+        # 同じガード(`row > HEADER_ROW`)が効いていることを直接確認する。
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(TOTAL_AMOUNT_ROW)
+        sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"], ["2800"]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+        sheet.write_sales_nums({})
+
+        batch_update_calls_before = sales_ws.batch_update.call_count
+        sheet.write_prices({"B00EXAMPLE": 3000.0})
+
+        # 予約行(行3)のASINは対象から除外され、価格書き込み自体が発生しない。
+        assert sales_ws.batch_update.call_count == batch_update_calls_before
+        sales_ws.update_notes.assert_not_called()
+        sales_ws.spreadsheet.batch_update.assert_not_called()
+        sales_ws.format.assert_not_called()
