@@ -20,9 +20,10 @@ def _freeze_run_date_to(mock_datetime: Mock) -> None:
 
 
 def _create_sheet(header_serials: list) -> tuple[SalesSheet, Mock]:
+    # 実運用の行構成（行1〜4は予約行、ASINは行5以降）を再現する。
     sales_ws = Mock()
     sales_ws.row_values.side_effect = [HEADERS, header_serials]
-    sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
+    sales_ws.col_values.return_value = ["header", "", "合計", "header4", "B00EXAMPLE"]
     sheet = SalesSheet(sales_worksheet=sales_ws)
     sheet.get_asin_list()
     return sheet, sales_ws
@@ -78,7 +79,7 @@ class TestWriteRetriesOnConnectionError:
         sales_ws.row_values.side_effect = [
             HEADERS, ["", "目標販売数", 46242], ["", "目標販売数", 46242],
         ]
-        sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
+        sales_ws.col_values.return_value = ["header", "", "合計", "header4", "B00EXAMPLE"]
         sales_ws.insert_cols.side_effect = [
             requests.exceptions.ConnectionError("Connection reset by peer"), None,
         ]
@@ -99,7 +100,7 @@ class TestWriteRetriesOnConnectionError:
             ["", "目標販売数", 46242],
             ["", "目標販売数", YESTERDAY_SERIAL, 46242],
         ]
-        sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
+        sales_ws.col_values.return_value = ["header", "", "合計", "header4", "B00EXAMPLE"]
         sales_ws.batch_update.side_effect = [
             requests.exceptions.ConnectionError("Connection reset by peer"), None,
         ]
@@ -115,7 +116,7 @@ class TestWriteRetriesOnConnectionError:
         self._freeze_yesterday(mock_datetime)
         sales_ws = Mock()
         sales_ws.row_values.return_value = HEADERS
-        sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
+        sales_ws.col_values.return_value = ["header", "", "合計", "header4", "B00EXAMPLE"]
         sales_ws.batch_update.side_effect = requests.exceptions.ConnectionError("reset")
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
@@ -127,7 +128,7 @@ class TestWriteRetriesOnConnectionError:
         self._freeze_yesterday(mock_datetime)
         sales_ws = Mock()
         sales_ws.row_values.return_value = HEADERS
-        sales_ws.col_values.return_value = ["header", "B00EXAMPLE"]
+        sales_ws.col_values.return_value = ["header", "", "合計", "header4", "B00EXAMPLE"]
         sales_ws.get_notes.return_value = [["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
