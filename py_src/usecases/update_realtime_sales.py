@@ -15,7 +15,7 @@ JST = timezone(timedelta(hours=9))
 # comment assumed for the hourly job -- the per-ASIN loop has a hard sleep floor before
 # any network latency: sp_api_authenticator.request() sleeps 2s before every attempt
 # (even a successful first one) and _fetch_each adds a 1s inter-ASIN pause, so 77 ASINs
-# floor at 77*2 + 76*1 = 230s =~ 3.85 minutes from sleeps alone. Add ordinary (not
+# floor at 77*2 + 76*1 = 230s =~ 3.83 minutes from sleeps alone. Add ordinary (not
 # degraded) per-request latency of even 2-3s over best case and a healthy run can reach
 # 7-9 minutes -- a 10-minute deadline left too little margin above that and would have
 # started paging on perfectly normal runs (an earlier version of this comment used

@@ -39,11 +39,17 @@ def _ad_row_status(index: int, asin_values: list[str], name_values: list[str]) -
         return "needs_insertion"
     if name_below == AD_ROW_LABEL:
         return "already_labeled"
-    if below < total:
-        # ASIN・商品名ともに空だが、below行より先(いずれかの列)にまだデータが続いている
+    if not name_below and below < total:
+        # ASIN・商品名ともに空で、かつ below行より先(いずれかの列)にまだデータが続いている
         # ＝below行は物理的に実在する。前回実行が「行の挿入(insertDimension)」までは
         # 成功したが「ラベル書き込み」で失敗して中断した状態とみなし、行を再挿入せず
         # ラベル・背景色だけ書き直す（plan_ad_row_recovery 参照）。
+        #
+        # name_below が空でない場合(AD_ROW_LABEL以外の何らかの文字列)は、たとえ below<total
+        # でもここには来ない＝needs_insertion（安全な新規挿入）へ落ちる。挿入済みだが未ラベル
+        # な行の商品名セルは常に空であるはずなので、何か書かれているなら「広告行の残骸」ではなく
+        # 「一部だけクリアされた行」「メモ」「かつてのラベルの誤字」等の既存データの可能性があり、
+        # ラベルで上書きしてはいけない（上書きすると内容が黙って消える）。
         #
         # 既知の限界: 対象ASINがシートの最終行の場合、col_values() は末尾の空セルを
         # 返さないため below >= total となり、この判定では「挿入済みで未ラベル」と
