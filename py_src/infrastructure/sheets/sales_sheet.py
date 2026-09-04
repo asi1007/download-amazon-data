@@ -47,6 +47,11 @@ class SalesSheet:
         self._price_column: int = 0
         self._sales_column: int | None = None
 
+    # write_sales_nums / write_prices below are @retry_on_transient_error; this read is
+    # deliberately not. It runs before the hourly/realtime deadline budget starts
+    # counting (see update_today_sales.py / update_realtime_sales.py), so a transient
+    # failure here should fail fast via the gspread timeout rather than spend part of
+    # that budget retrying with a 30s/60s backoff.
     def get_asin_list(self) -> list[str]:
         headers = self._worksheet.row_values(HEADER_ROW)
         self._start_column = self._find_column(headers, "目標販売数") + 1

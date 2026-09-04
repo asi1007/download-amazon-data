@@ -11,12 +11,23 @@ JST = timezone(timedelta(hours=9))
 
 # This job (main.py, no subcommand) fires every 30 minutes and writes 売上/今. Same
 # hang-risk shape as the hourly job (see HOURLY_SALES_DEADLINE_SECONDS in
-# update_today_sales.py), scaled down for the shorter cycle: worst case per ASIN is
-# still ~8.2 minutes (see that comment for the arithmetic), so a smaller deadline still
-# leaves comfortable buffer before the next 30-minute firing (10 + 8.2 =~ 18.2 minutes
-# worst case, ~11.8 minutes of buffer) while staying well above a healthy run (a couple
-# of minutes for ~77 ASINs).
-REALTIME_SALES_DEADLINE_SECONDS = 10 * 60
+# update_today_sales.py). A healthy run is NOT "a couple of minutes" the way that
+# comment assumed for the hourly job -- the per-ASIN loop has a hard sleep floor before
+# any network latency: sp_api_authenticator.request() sleeps 2s before every attempt
+# (even a successful first one) and _fetch_each adds a 1s inter-ASIN pause, so 77 ASINs
+# floor at 77*2 + 76*1 = 230s =~ 3.85 minutes from sleeps alone. Add ordinary (not
+# degraded) per-request latency of even 2-3s over best case and a healthy run can reach
+# 7-9 minutes -- a 10-minute deadline left too little margin above that and would have
+# started paging on perfectly normal runs (an earlier version of this comment used
+# 10 minutes; raised to 15 after review caught the margin was too tight). Worst-case
+# wall clock with 15 minutes: the deadline is checked once per ASIN before starting its
+# fetch, not mid-request, so the in-flight ASIN when it fires can still run its own
+# ~8.2-minute worst case (see HOURLY_SALES_DEADLINE_SECONDS) to completion --
+# 15 + 8.2 =~ 23.2 minutes, leaving ~6.8 minutes of buffer before the next 30-minute
+# firing. That's tighter than the hourly job's ~32-minute buffer, but still positive,
+# and 15 minutes gives a comfortable ~6-8 minutes of headroom above the ~7-9 minute
+# healthy-run estimate above.
+REALTIME_SALES_DEADLINE_SECONDS = 15 * 60
 
 
 class UpdateRealtimeSalesUseCase:
