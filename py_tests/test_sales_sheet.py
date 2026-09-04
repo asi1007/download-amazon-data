@@ -115,6 +115,47 @@ class TestSalesSheet:
         row3_request = [r for r in requests if r["range"] == rowcol_to_a1(3, 3)]
         assert row3_request[0]["values"] == [[502166.0]]
 
+    def test_write_sales_nums_skips_total_row_when_include_total_is_false(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        asin_sales = {
+            "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
+        }
+        sheet.write_sales_nums(asin_sales, include_total=False)
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row3_range = rowcol_to_a1(3, 3)
+        assert not any(r["range"] == row3_range for r in requests)
+
+    def test_write_sales_nums_still_writes_fetched_cells_when_include_total_is_false(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        asin_sales = {
+            "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
+        }
+        sheet.write_sales_nums(asin_sales, include_total=False)
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written_ranges = {r["range"] for r in requests}
+        assert rowcol_to_a1(5, 3) in written_ranges  # B00EXAMPLE (fetched, still written)
+
+    def test_write_sales_nums_includes_total_row_by_default(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
+        )
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row3_range = rowcol_to_a1(3, 3)
+        assert any(r["range"] == row3_range for r in requests)
+
     def test_write_prices_updates_cells(self) -> None:
         sales_ws = _create_mock_worksheet()
         sales_ws.get_notes.return_value = [["2800"], ["2800"], ["2800"]]

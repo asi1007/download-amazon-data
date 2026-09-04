@@ -7,12 +7,15 @@ from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadline
 JST = timezone(timedelta(hours=9))
 
 # The hourly job (main.py today) writes only the current hour's column, and the next
-# firing is 60 minutes away. A degraded SP-API can make a single ASIN retry loop take
-# several minutes (see SP_API_REQUEST_TIMEOUT_SECONDS / retry sleeps in
-# sp_api_authenticator.py), so 77 ASINs unbounded could still run for hours and block
-# every following hour the way the 19h42m incident did. 20 minutes gives a healthy run
-# (a couple of minutes for ~77 ASINs) generous headroom while still leaving 40 minutes
-# of buffer before the next hourly firing if the run gives up.
+# firing is 60 minutes away. A degraded SP-API can make a single ASIN's retry loop take
+# up to ~8.2 minutes worst case (5 attempts: 42s of sleep between attempts + 5 x 90s
+# SP_API_REQUEST_TIMEOUT_SECONDS read timeout = 492s), so 77 ASINs unbounded could still
+# run for hours and block every following hour the way the 19h42m incident did. The
+# deadline is checked once per ASIN before starting its fetch, not mid-request, so the
+# in-flight ASIN when the deadline fires can still run its own worst case to completion:
+# worst-case wall clock is therefore ~20 + 8.2 =~ 28 minutes, leaving ~32 minutes of
+# buffer before the next hourly firing. 20 minutes gives a healthy run (a couple of
+# minutes for ~77 ASINs) generous headroom while keeping that buffer comfortable.
 HOURLY_SALES_DEADLINE_SECONDS = 20 * 60
 
 
@@ -34,7 +37,12 @@ class UpdateTodaySalesUseCase:
                 deadline_at=deadline_at,
             )
         except SalesFetchDeadlineExceededError as error:
-            self._sheet.write_sales_nums(error.partial_results, target_date=today)
+            # A partial result understates row 3 (total sales) if summed as-is, so
+            # tell the sheet not to touch it — leaving the previous hour's total in
+            # place is more honest than replacing it with an incomplete sum.
+            self._sheet.write_sales_nums(
+                error.partial_results, target_date=today, include_total=False,
+            )
             raise
         self._sheet.write_sales_nums(asin_sales, target_date=today)
 

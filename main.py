@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
@@ -18,6 +17,7 @@ from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
 from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
+from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
 from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase
@@ -60,13 +60,7 @@ def _create_authenticator() -> SpApiAuthenticator:
 def _open_spreadsheet() -> gspread.Spreadsheet:
     credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json")
     spreadsheet_id = os.getenv("SPREADSHEET_ID")
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(creds)
-    return client.open_by_key(spreadsheet_id)
+    return open_spreadsheet(credentials_file, spreadsheet_id)
 
 
 def update_daily_sales() -> None:

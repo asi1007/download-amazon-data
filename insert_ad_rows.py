@@ -6,7 +6,6 @@ from pathlib import Path
 import gspread
 from dotenv import load_dotenv
 from gspread.utils import rowcol_to_a1
-from oauth2client.service_account import ServiceAccountCredentials
 
 from py_src.infrastructure.sheets.ad_sales_sheet import (
     AD_ROW_LABEL,
@@ -15,6 +14,7 @@ from py_src.infrastructure.sheets.ad_sales_sheet import (
     HEADER_ROW,
     PRODUCT_NAME_HEADER,
 )
+from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 AD_ROW_BACKGROUND = {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}
@@ -56,14 +56,8 @@ def build_insert_requests(sheet_id: int, insert_rows: list[int]) -> list[dict]:
 
 def _open_worksheet() -> gspread.Worksheet:
     load_dotenv()
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
     credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(os.getenv("SPREADSHEET_ID"))
+    spreadsheet = open_spreadsheet(credentials_file, os.getenv("SPREADSHEET_ID"))
     return spreadsheet.worksheet(SHEET_NAME)
 
 

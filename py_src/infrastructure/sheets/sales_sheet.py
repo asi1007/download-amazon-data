@@ -66,7 +66,10 @@ class SalesSheet:
 
     @retry_on_transient_error
     def write_sales_nums(
-        self, asin_sales: dict[str, SalesInfo], target_date: date | None = None
+        self,
+        asin_sales: dict[str, SalesInfo],
+        target_date: date | None = None,
+        include_total: bool = True,
     ) -> None:
         if target_date is None:
             target_date = (datetime.now(JST) - timedelta(days=1)).date()
@@ -92,9 +95,15 @@ class SalesSheet:
                         {"range": rowcol_to_a1(row, col), "values": [[sales.unit_count]]}
                     )
             total_amount += sales.total_sales_amount
-        requests.append(
-            {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "values": [[total_amount]]}
-        )
+        if include_total:
+            # asin_sales may cover only a subset of ASINs (deadline cutoff, partial
+            # fetch). Writing a total computed from a subset would silently understate
+            # row 3 and contradict the individual cells. When the caller knows the
+            # result is partial (include_total=False), leave row 3 as whatever the
+            # previous run wrote rather than replace it with an incomplete sum.
+            requests.append(
+                {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "values": [[total_amount]]}
+            )
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
         apply_column_formats(self._worksheet, col)

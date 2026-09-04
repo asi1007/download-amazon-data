@@ -5,11 +5,11 @@ from datetime import datetime, timedelta, timezone
 
 import gspread
 from dotenv import load_dotenv
-from oauth2client.service_account import ServiceAccountCredentials
 
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 JST = timezone(timedelta(hours=9))
 SHEETS_EPOCH = datetime(1899, 12, 30)
@@ -64,13 +64,7 @@ def _date_serial(jst_datetime: datetime) -> int:
 def _open_spreadsheet() -> gspread.Spreadsheet:
     credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json")
     spreadsheet_id = os.getenv("SPREADSHEET_ID")
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(credentials_file, scope)
-    client = gspread.authorize(creds)
-    return client.open_by_key(spreadsheet_id)
+    return open_spreadsheet(credentials_file, spreadsheet_id)
 
 
 if __name__ == "__main__":

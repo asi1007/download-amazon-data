@@ -113,3 +113,4 @@ class TestUpdateTodaySalesUseCase:
         args, kwargs = mock_sheet.write_sales_nums.call_args
         assert args[0] == partial_results
         assert kwargs["target_date"] == datetime.now(JST).date()
+        assert kwargs["include_total"] is False

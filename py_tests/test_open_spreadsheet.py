@@ -13,8 +13,8 @@ def _api_error(code: int, message: str) -> APIError:
 
 
 @patch("py_src.infrastructure.sheets.retry.time.sleep")
-@patch("main.ServiceAccountCredentials")
-@patch("main.gspread")
+@patch("py_src.infrastructure.sheets.spreadsheet_client.ServiceAccountCredentials")
+@patch("py_src.infrastructure.sheets.spreadsheet_client.gspread")
 class TestOpenSpreadsheetSurvivesTransientOutage:
     def test_retries_when_sheets_api_is_unavailable(
         self, mock_gspread: Mock, mock_credentials: Mock, mock_sleep: Mock
