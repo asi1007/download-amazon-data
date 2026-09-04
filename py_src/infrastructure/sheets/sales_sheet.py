@@ -8,6 +8,7 @@ from py_src.infrastructure.sheets.retry import retry_on_transient_error
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
 TOTAL_AMOUNT_ROW = 3
+FETCH_TIME_ROW = 2
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
 TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}}
@@ -29,6 +30,10 @@ def apply_column_formats(worksheet: Worksheet, col: int) -> None:
 def _date_serial(target_date: date) -> int:
     naive = datetime(target_date.year, target_date.month, target_date.day)
     return (naive - SHEETS_EPOCH).days
+
+
+def _fetch_time_label() -> str:
+    return datetime.now(JST).strftime("%H:%M")
 
 
 class SalesSheet:
@@ -69,6 +74,9 @@ class SalesSheet:
 
         requests: list[dict] = []
         requests.append({"range": rowcol_to_a1(1, col), "values": [[date_serial]]})
+        requests.append(
+            {"range": rowcol_to_a1(FETCH_TIME_ROW, col), "values": [[_fetch_time_label()]]}
+        )
         requests.append({"range": rowcol_to_a1(HEADER_ROW, col), "values": [[date_serial]]})
 
         total_amount = 0.0

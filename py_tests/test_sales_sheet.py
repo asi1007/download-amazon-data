@@ -1,6 +1,12 @@
+import re
 from unittest.mock import Mock
 from gspread.utils import rowcol_to_a1
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from py_src.infrastructure.sheets.sales_sheet import (
+    SalesSheet,
+    FETCH_TIME_ROW,
+    HEADER_ROW,
+    TOTAL_AMOUNT_ROW,
+)
 from py_src.domain.value_objects.sales_info import SalesInfo
 
 
@@ -9,6 +15,18 @@ def _create_mock_worksheet() -> Mock:
     sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
     sales_ws.col_values.return_value = [
         "header", "B00EXAMPLE", "B00EXAMPLF", "", "header2", "B00EXAMPLG",
+    ]
+    return sales_ws
+
+
+def _create_mock_worksheet_with_reserved_header_rows() -> Mock:
+    # 実運用の行構成（行1/3/4はヘッダー・合計、ASINは行5以降）を再現する。
+    # _create_mock_worksheet() は簡略化のため行2にASINを置いており、
+    # FETCH_TIME_ROW(=2) の検証には使えない。
+    sales_ws = Mock()
+    sales_ws.row_values.return_value = ["", "目標販売数", "", "", "自社価格"]
+    sales_ws.col_values.return_value = [
+        "header", "", "合計", "header4", "B00EXAMPLE", "B00EXAMPLF",
     ]
     return sales_ws
 
@@ -363,3 +381,49 @@ class TestGetSellingPrices:
         sheet.get_asin_list()
         prices = sheet.get_selling_prices()
         assert prices == {}
+
+
+class TestFetchTimeRow:
+    def test_writes_hh_mm_shaped_value_to_row2(self) -> None:
+        sales_ws = _create_mock_worksheet_with_reserved_header_rows()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
+        )
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        row2_requests = [r for r in requests if r["range"] == rowcol_to_a1(FETCH_TIME_ROW, 3)]
+        assert len(row2_requests) == 1
+        value = row2_requests[0]["values"][0][0]
+        assert isinstance(value, str)
+        assert re.fullmatch(r"\d{2}:\d{2}", value)
+
+    def test_rows_1_3_4_still_populated_alongside_row2(self) -> None:
+        sales_ws = _create_mock_worksheet_with_reserved_header_rows()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
+        )
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written = {r["range"]: r["values"] for r in requests}
+        assert written[rowcol_to_a1(1, 3)] == written[rowcol_to_a1(HEADER_ROW, 3)]
+        assert written[rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)] == [[6000.0]]
+
+    def test_labeled_column_insertion_leaves_row2_empty_before_batch_update_fills_it(
+        self,
+    ) -> None:
+        sales_ws = _create_mock_worksheet_with_reserved_header_rows()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums(
+            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
+        )
+
+        inserted_label_column = sales_ws.insert_cols.call_args[0][0][0]
+        assert inserted_label_column[FETCH_TIME_ROW - 1] == ""
