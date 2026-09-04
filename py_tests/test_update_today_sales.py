@@ -1,8 +1,11 @@
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase
+import pytest
+
+from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase, HOURLY_SALES_DEADLINE_SECONDS
 from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
 
 JST = timezone(timedelta(hours=9))
 
@@ -71,3 +74,42 @@ class TestUpdateTodaySalesUseCase:
         expected_today = datetime.now(JST).date()
         _, kwargs = mock_sheet.write_sales_nums.call_args
         assert kwargs["target_date"] == expected_today
+
+    def test_passes_a_deadline_bounded_by_the_hourly_budget(self) -> None:
+        mock_sheet = Mock()
+        mock_sheet.get_asin_list.return_value = []
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.return_value = {}
+
+        usecase = UpdateTodaySalesUseCase(
+            sales_sheet=mock_sheet, sales_repository=mock_sales_repo,
+        )
+        with patch(
+            "py_src.usecases.update_today_sales.time.monotonic", return_value=1_000.0,
+        ):
+            usecase.execute()
+
+        _, kwargs = mock_sales_repo.get_daily_sales.call_args
+        assert kwargs["deadline_at"] == 1_000.0 + HOURLY_SALES_DEADLINE_SECONDS
+
+    def test_deadline_exceeded_writes_partial_results_then_reraises(self) -> None:
+        mock_sheet = Mock()
+        mock_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF", "B00EXAMPLG"]
+        partial_results = {
+            "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
+        }
+        mock_sales_repo = Mock()
+        mock_sales_repo.get_daily_sales.side_effect = SalesFetchDeadlineExceededError(
+            partial_results=partial_results, attempted_count=1, total_count=3,
+        )
+
+        usecase = UpdateTodaySalesUseCase(
+            sales_sheet=mock_sheet, sales_repository=mock_sales_repo,
+        )
+        with pytest.raises(SalesFetchDeadlineExceededError):
+            usecase.execute()
+
+        mock_sheet.write_sales_nums.assert_called_once()
+        args, kwargs = mock_sheet.write_sales_nums.call_args
+        assert args[0] == partial_results
+        assert kwargs["target_date"] == datetime.now(JST).date()

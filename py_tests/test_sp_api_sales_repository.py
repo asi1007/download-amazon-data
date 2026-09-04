@@ -5,6 +5,7 @@ from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import (
     SpApiSalesRepository,
     SalesFetchFailureError,
+    SalesFetchDeadlineExceededError,
 )
 
 
@@ -160,3 +161,77 @@ class TestPartialFailureTolerance:
         repo.get_daily_sales(_asins(10), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z")
 
         assert auth.request.call_count == 10
+
+
+@patch("py_src.infrastructure.api.sp_api_sales_repository.time.sleep")
+class TestDeadline:
+    def test_deadline_not_passed_behaves_like_no_deadline(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.return_value = _sales_payload(2)
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        with patch(
+            "py_src.infrastructure.api.sp_api_sales_repository.time.monotonic",
+            return_value=0.0,
+        ):
+            result = repo.get_daily_sales(
+                _asins(5), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z", deadline_at=1000.0,
+            )
+
+        assert len(result) == 5
+        assert auth.request.call_count == 5
+
+    def test_deadline_already_passed_raises_before_any_request(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.return_value = _sales_payload(2)
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        with patch(
+            "py_src.infrastructure.api.sp_api_sales_repository.time.monotonic",
+            return_value=1000.0,
+        ):
+            with pytest.raises(SalesFetchDeadlineExceededError) as excinfo:
+                repo.get_daily_sales(
+                    _asins(5), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z", deadline_at=0.0,
+                )
+
+        assert auth.request.call_count == 0
+        assert excinfo.value.partial_results == {}
+
+    def test_deadline_hit_partway_returns_partial_results_and_stops_requesting(
+        self, mock_sleep: Mock
+    ) -> None:
+        auth = Mock()
+        auth.request.return_value = _sales_payload(4)
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        # monotonic() is polled once per ASIN before each attempt. Let the first two
+        # through, then report the deadline as passed for the remaining three.
+        monotonic_values = [0.0, 0.0, 100.0, 100.0, 100.0, 100.0]
+        with patch(
+            "py_src.infrastructure.api.sp_api_sales_repository.time.monotonic",
+            side_effect=monotonic_values,
+        ):
+            with pytest.raises(SalesFetchDeadlineExceededError) as excinfo:
+                repo.get_daily_sales(
+                    _asins(5), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z", deadline_at=50.0,
+                )
+
+        assert auth.request.call_count == 2
+        assert len(excinfo.value.partial_results) == 2
+
+    def test_deadline_does_not_apply_to_weekly_sales(self, mock_sleep: Mock) -> None:
+        auth = Mock()
+        auth.request.return_value = _sales_payload(2)
+        repo = SpApiSalesRepository(authenticator=auth)
+
+        with patch(
+            "py_src.infrastructure.api.sp_api_sales_repository.time.monotonic",
+            return_value=1000.0,
+        ):
+            result = repo.get_weekly_sales(
+                _asins(3), "2026-08-07T15:00:00Z", "2026-08-08T15:00:00Z",
+            )
+
+        assert len(result) == 3
+        assert auth.request.call_count == 3

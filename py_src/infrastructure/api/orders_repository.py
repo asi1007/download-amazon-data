@@ -2,7 +2,11 @@ from __future__ import annotations
 import time
 from urllib.parse import quote
 from py_src.domain.entities.order import Order
-from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
+from py_src.infrastructure.api.sp_api_authenticator import (
+    SpApiAuthenticator,
+    SP_API_BASE,
+    SP_API_REQUEST_TIMEOUT_SECONDS,
+)
 
 MARKETPLACE_JP = "A1VC38T7YXB528"
 
@@ -27,7 +31,9 @@ class OrdersRepository:
         )
         while True:
             time.sleep(2)
-            response = self._auth._session.get(url, headers=self._auth.headers())
+            response = self._auth._session.get(
+                url, headers=self._auth.headers(), timeout=SP_API_REQUEST_TIMEOUT_SECONDS,
+            )
             if response.status_code == 403:
                 self._auth.authenticate()
                 continue
@@ -50,7 +56,9 @@ class OrdersRepository:
         url = f"{SP_API_BASE}/orders/v0/orders/{order_id}/orderItems?marketplaceIds={MARKETPLACE_JP}"
         for attempt in range(5):
             time.sleep(3 if attempt == 0 else 15)
-            response = self._auth._session.get(url, headers=self._auth.headers())
+            response = self._auth._session.get(
+                url, headers=self._auth.headers(), timeout=SP_API_REQUEST_TIMEOUT_SECONDS,
+            )
             if response.status_code == 429:
                 continue
             if response.status_code == 403:
