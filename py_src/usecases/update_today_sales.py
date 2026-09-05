@@ -2,6 +2,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone, timedelta
 from py_src.domain.repositories.sales_repository import SalesRepository
+from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
@@ -32,7 +33,7 @@ class UpdateTodaySalesUseCase:
         self._sales_repo = sales_repository
         self._cost_reader = cost_reader
 
-    def execute(self) -> None:
+    def execute(self) -> GrossProfitWriteResult:
         today = datetime.now(JST).date()
         asin_list = self._sheet.get_asin_list()
         start_date, end_date = self._get_today_range(today)
@@ -56,18 +57,18 @@ class UpdateTodaySalesUseCase:
             self._write_gross_profit(error.partial_results, today)
             raise
         self._sheet.write_sales_nums(asin_sales, target_date=today)
-        self._write_gross_profit(asin_sales, today)
+        return self._write_gross_profit(asin_sales, today)
 
     def _write_gross_profit(
         self, asin_sales: dict[str, SalesInfo], target_date: date
-    ) -> None:
+    ) -> GrossProfitWriteResult:
         costs = self._cost_reader.read()
         profits = {
             asin: profit
             for asin, sales in asin_sales.items()
             if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
         }
-        self._sheet.write_gross_profit(profits, target_date)
+        return self._sheet.write_gross_profit(profits, target_date)
 
     @staticmethod
     def _get_today_range(today: date) -> tuple[str, str]:

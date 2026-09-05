@@ -2,6 +2,10 @@ from __future__ import annotations
 from datetime import datetime, date, timezone, timedelta
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
+from py_src.domain.value_objects.gross_profit_write_result import (
+    GrossProfitRowsNotFoundError,
+    GrossProfitWriteResult,
+)
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.sheets.label_rows import (
     ASIN_COLUMN,
@@ -239,20 +243,34 @@ class SalesSheet:
     @retry_on_transient_error
     def write_gross_profit(
         self, profit_by_asin: dict[str, float], target_date: date
-    ) -> int:
+    ) -> GrossProfitWriteResult:
+        if not profit_by_asin:
+            return GrossProfitWriteResult()
+
+        # ここで黙って 0 件を返してはいけない。launchd の失敗通知は終了コードでしか
+        # 鳴らないため、書き込み0件で正常終了すると Slack にも daily note にも出ず、
+        # セルが何週間も空のまま気づかれない（19時間ハングと同じ無音の失敗）。
         column = read_date_columns(self._worksheet).get(label_date_serial(target_date))
         if column is None:
-            return 0
+            raise GrossProfitRowsNotFoundError(
+                f"{target_date} の日付列が見つからないため粗利益を書き込めません"
+            )
 
+        rows_by_asin = self._gross_profit_rows()
         targets = [
             (asin, row)
-            for asin, rows in self._gross_profit_rows().items()
+            for asin, rows in rows_by_asin.items()
             if asin in profit_by_asin
             for row in rows
             if row > HEADER_ROW
         ]
         if not targets:
-            return 0
+            raise GrossProfitRowsNotFoundError(
+                f"「{GROSS_PROFIT_ROW_LABEL}」行が1件も見つかりません"
+                f"（対象 {len(profit_by_asin)} ASIN）"
+            )
+        written_asins = {asin for asin, _ in targets}
+        asins_without_row = tuple(sorted(set(profit_by_asin) - written_asins))
 
         # batch_update は渡した dict の "range" を in-place でシート名付きに書き換える
         # (例: "CS9" -> "'売上/日'!CS9")。format() はシート名付きの範囲を受け付けないため、
@@ -265,7 +283,9 @@ class SalesSheet:
         ]
         self._worksheet.batch_update(requests, value_input_option="RAW")
         self._worksheet.format(written_cells, GROSS_PROFIT_ESTIMATE_FORMAT)
-        return len(requests)
+        return GrossProfitWriteResult(
+            cells_written=len(requests), asins_without_row=asins_without_row
+        )
 
     def _gross_profit_rows(self) -> dict[str, list[int]]:
         headers = self._worksheet.row_values(HEADER_ROW)

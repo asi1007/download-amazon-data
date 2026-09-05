@@ -5,6 +5,7 @@ import backfill_daily_sales
 from backfill_daily_sales import _backfill_one_day
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.unit_costs import UnitCosts
+from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.infrastructure.sheets.sales_sheet import SalesSheet
 from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
@@ -14,6 +15,7 @@ JST = timezone(timedelta(hours=9))
 class TestBackfillOneDay:
     def test_writes_through_write_sales_nums_with_target_date(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
             "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
@@ -28,6 +30,7 @@ class TestBackfillOneDay:
 
     def test_does_not_reach_into_sales_sheet_privates(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         sales_repository.get_daily_sales.return_value = {}
 
@@ -37,6 +40,7 @@ class TestBackfillOneDay:
 
     def test_fetches_the_requested_days_utc_window(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         sales_repository.get_daily_sales.return_value = {}
 
@@ -50,6 +54,7 @@ class TestBackfillOneDay:
 
     def test_writes_gross_profit_after_sales_nums_using_the_given_costs(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
             "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
@@ -70,6 +75,7 @@ class TestBackfillOneDay:
 
     def test_does_not_write_gross_profit_when_cost_is_missing(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
             "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),

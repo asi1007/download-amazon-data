@@ -150,6 +150,7 @@ class TestUpdateDailySalesUseCase:
         price_repository.get_competitive_prices.return_value = {}
         calls: list[str] = []
         sales_sheet.write_sales_nums.side_effect = lambda *a, **k: calls.append("units")
+        sales_sheet.write_prices.side_effect = lambda *a, **k: calls.append("prices")
         sales_sheet.write_gross_profit.side_effect = lambda *a, **k: calls.append("profit")
         usecase = UpdateDailySalesUseCase(
             sales_sheet=sales_sheet,
@@ -160,4 +161,5 @@ class TestUpdateDailySalesUseCase:
 
         usecase.execute()
 
-        assert calls == ["units", "profit"]
+        # 粗利益は価格のあとに書く。原価列の読み取りが落ちても価格列を巻き添えにしない
+        assert calls == ["units", "prices", "profit"]

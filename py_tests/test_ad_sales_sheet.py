@@ -1,9 +1,11 @@
 from unittest.mock import Mock
 
+import pytest
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1
 
 from py_src.domain.value_objects.ad_metrics import AdMetrics
+from py_src.domain.value_objects.ad_write_result import AdCostRowsNotFoundError
 from py_src.infrastructure.sheets.label_rows import (
     AD_COST_ROW_LABEL,
     AD_ROW_LABEL,
@@ -228,3 +230,46 @@ class TestAdSalesSheet:
         sheet.write_ad_metrics({"2026-08-01": {"B00EXAMPLE": AdMetrics(units=3, cost=120.0)}})
 
         worksheet.format.assert_not_called()
+
+
+class TestAdCostRowObservability:
+    def test_raises_when_no_ad_cost_row_exists_at_all(self) -> None:
+        # 広告経由の行はあるのに広告費の行が1本も無い状態。個数だけ書けて
+        # 終了コード0で終わると、launchd の失敗通知が鳴らず広告費が永久に空になる
+        col_a = ["", "", "", "ASIN", "B00EXAMPLE", ""]
+        col_name = ["", "", "", "商品名", "ルーペ", AD_ROW_LABEL]
+        worksheet = _make_worksheet(col_a, col_name)
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        with pytest.raises(AdCostRowsNotFoundError):
+            sheet.write_ad_metrics({"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3, cost=180.0)}})
+
+        worksheet.batch_update.assert_not_called()
+
+    def test_reports_asins_whose_ad_cost_row_is_missing(self) -> None:
+        # 一部の商品だけラベル行が欠けている場合は、書ける分は書いて欠けを報告する
+        col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", "B00EXAMPLF", ""]
+        col_name = [
+            "", "", "", "商品名",
+            "ルーペ", AD_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL,
+            "ボール", AD_ROW_LABEL,
+        ]
+        sheet = AdSalesSheet(worksheet=_make_worksheet(col_a, col_name))
+        sheet.get_ad_rows()
+
+        result = sheet.write_ad_metrics({"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3)}})
+
+        assert result.asins_without_cost_row == ("B00EXAMPLF",)
+
+    def test_counts_unit_and_cost_cells_separately(self) -> None:
+        # cells_written だけだと広告費が0件でも合計が健全に見える
+        worksheet = _make_worksheet()
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        result = sheet.write_ad_metrics({"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3)}})
+
+        assert result.unit_cells_written == 3
+        assert result.cost_cells_written == 3
+        assert result.cells_written == 6

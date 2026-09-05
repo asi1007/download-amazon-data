@@ -10,6 +10,10 @@ from py_src.infrastructure.sheets.sales_sheet import (
     HEADER_ROW,
     TOTAL_AMOUNT_ROW,
 )
+import pytest
+from py_src.domain.value_objects.gross_profit_write_result import (
+    GrossProfitRowsNotFoundError,
+)
 from py_src.domain.value_objects.sales_info import SalesInfo
 
 
@@ -585,9 +589,9 @@ class TestWriteGrossProfit:
         sales_ws = _create_mock_worksheet_for_gross_profit()
         sheet = SalesSheet(sales_worksheet=sales_ws)
 
-        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+        result = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
-        assert written == 1
+        assert result.cells_written == 1
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         assert requests == [
             {"range": rowcol_to_a1(6, GROSS_PROFIT_COLUMN), "values": [[1200.0]]}
@@ -649,15 +653,41 @@ class TestWriteGrossProfit:
         assert formatted_ranges == [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)]
         assert all("!" not in cell for cell in formatted_ranges)
 
-    def test_returns_zero_and_writes_nothing_when_date_column_missing(self) -> None:
+    def test_raises_when_date_column_missing(self) -> None:
+        # 黙って0件を返すと launchd の失敗通知が鳴らず、粗利益が空のまま
+        # 何週間も気づかれない。日付列は直前の write_sales_nums が作るので、
+        # 無いこと自体が異常
         sales_ws = _create_mock_worksheet_for_gross_profit()
         sheet = SalesSheet(sales_worksheet=sales_ws)
 
-        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, date(2099, 1, 1))
+        with pytest.raises(GrossProfitRowsNotFoundError):
+            sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, date(2099, 1, 1))
 
-        assert written == 0
         sales_ws.batch_update.assert_not_called()
         sales_ws.format.assert_not_called()
+
+    def test_returns_empty_result_without_raising_when_no_profit_to_write(self) -> None:
+        # 全 ASIN で原価が欠けている日は書くものが無いだけで異常ではない
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        result = sheet.write_gross_profit({}, TARGET_DATE)
+
+        assert result.cells_written == 0
+        sales_ws.batch_update.assert_not_called()
+
+    def test_reports_asins_that_have_no_gross_profit_row(self) -> None:
+        # 新商品の行が3行しか入っていない等でラベル行が欠けた場合、
+        # 書けた分は書きつつ、書けなかった ASIN を呼び出し元へ返す
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        result = sheet.write_gross_profit(
+            {"B00EXAMPLE": 1200.0, "B00NOROW999": 800.0}, TARGET_DATE
+        )
+
+        assert result.cells_written == 1
+        assert result.asins_without_row == ("B00NOROW999",)
 
     def test_skips_writing_when_asin_lands_on_reserved_row(self) -> None:
         sales_ws = _create_mock_worksheet_for_gross_profit()
@@ -670,7 +700,7 @@ class TestWriteGrossProfit:
         )
         sheet = SalesSheet(sales_worksheet=sales_ws)
 
-        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+        with pytest.raises(GrossProfitRowsNotFoundError):
+            sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
-        assert written == 0
         sales_ws.batch_update.assert_not_called()

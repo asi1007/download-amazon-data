@@ -7,7 +7,7 @@ from gspread import Worksheet
 from gspread.utils import rowcol_to_a1
 
 from py_src.domain.value_objects.ad_metrics import AdMetrics
-from py_src.domain.value_objects.ad_write_result import AdWriteResult
+from py_src.domain.value_objects.ad_write_result import AdCostRowsNotFoundError, AdWriteResult
 from py_src.infrastructure.sheets.label_rows import (
     AD_COST_ROW_LABEL,
     AD_ROW_LABEL,
@@ -60,12 +60,25 @@ class AdSalesSheet:
         # (sales_sheet.py の write_gross_profit / write_prices と同じ回避)。K円表記は
         # 広告費の行だけに適用するため、対象範囲を batch_update を呼ぶ前に控えておく。
         cost_cells = [request["range"] for request in cost_requests]
+        # 広告費の行が1本も無いのに個数だけ書けてしまうと、終了コードは0のまま
+        # 広告費の列が永久に空になる。launchd の失敗通知は終了コードでしか鳴らない
+        if self._ad_rows and not self._ad_cost_rows:
+            raise AdCostRowsNotFoundError(
+                f"「{AD_COST_ROW_LABEL}」行が1件も見つかりません"
+                f"（広告経由の行は {len(self._ad_rows)} 件ある）"
+            )
         requests = unit_requests + cost_requests
         if requests:
             self._worksheet.batch_update(requests, value_input_option="RAW")
         if cost_cells:
             self._worksheet.format(cost_cells, AD_COST_ESTIMATE_FORMAT)
-        return AdWriteResult(cells_written=len(requests), skipped_dates=skipped_dates)
+        return AdWriteResult(
+            cells_written=len(requests),
+            skipped_dates=skipped_dates,
+            unit_cells_written=len(unit_requests),
+            cost_cells_written=len(cost_requests),
+            asins_without_cost_row=tuple(sorted(set(self._ad_rows) - set(self._ad_cost_rows))),
+        )
 
     @staticmethod
     def _requests_for(

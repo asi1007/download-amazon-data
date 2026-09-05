@@ -7,6 +7,7 @@ import gspread
 from dotenv import load_dotenv
 
 from py_src.domain.repositories.sales_repository import SalesRepository
+from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
@@ -67,8 +68,15 @@ def _backfill_one_day(
     asin_sales = sales_repository.get_daily_sales(asin_list, start_date_utc, end_date_utc)
 
     sales_sheet.write_sales_nums(asin_sales, target_date=target_date.date())
-    _write_gross_profit(sales_sheet, asin_sales, costs, target_date.date())
+    profit_result = _write_gross_profit(sales_sheet, asin_sales, costs, target_date.date())
     print(f"[{target_date_str}] 完了: {sum(1 for s in asin_sales.values() if s.unit_count > 0)}件販売あり")
+    print(f"[{target_date_str}] 粗利益: {profit_result.cells_written} セル")
+    if profit_result.asins_without_row:
+        print(
+            f"[{target_date_str}] 粗利益の行が無い ASIN"
+            f"（{len(profit_result.asins_without_row)}件）: "
+            f"{', '.join(profit_result.asins_without_row)}"
+        )
 
 
 def _write_gross_profit(
@@ -76,13 +84,13 @@ def _write_gross_profit(
     asin_sales: dict[str, SalesInfo],
     costs: dict[str, UnitCosts],
     target_date: date,
-) -> None:
+) -> GrossProfitWriteResult:
     profits = {
         asin: profit
         for asin, sales in asin_sales.items()
         if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
     }
-    sales_sheet.write_gross_profit(profits, target_date)
+    return sales_sheet.write_gross_profit(profits, target_date)
 
 
 def _date_serial(jst_datetime: datetime) -> int:

@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import gspread
 
+from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
@@ -79,7 +80,7 @@ def update_daily_sales() -> None:
         price_repository=price_repository,
         cost_reader=cost_reader,
     )
-    usecase.execute()
+    _print_gross_profit_result(usecase.execute())
 
 
 def update_today_sales() -> None:
@@ -95,7 +96,16 @@ def update_today_sales() -> None:
         sales_repository=sales_repository,
         cost_reader=cost_reader,
     )
-    usecase.execute()
+    _print_gross_profit_result(usecase.execute())
+
+
+def _print_gross_profit_result(result: GrossProfitWriteResult) -> None:
+    print(f"粗利益を {result.cells_written} セル書き込みました")
+    if result.asins_without_row:
+        print(
+            f"粗利益の行が無い ASIN（{len(result.asins_without_row)}件）: "
+            f"{', '.join(result.asins_without_row)}"
+        )
 
 
 def update_weekly_sales() -> None:
@@ -140,7 +150,15 @@ def update_ad_sales() -> None:
     ad_sheet = AdSalesSheet(worksheet=spreadsheet.worksheet("売上/日"))
     usecase = UpdateAdSalesUseCase(ad_sheet=ad_sheet, ads_repository=ads_repository)
     result = usecase.execute()
-    print(f"広告経由の売上個数を {result.cells_written} セル書き込みました")
+    print(
+        f"広告経由の売上個数を {result.unit_cells_written} セル、"
+        f"広告費を {result.cost_cells_written} セル書き込みました"
+    )
+    if result.asins_without_cost_row:
+        print(
+            f"広告費の行が無い ASIN（{len(result.asins_without_cost_row)}件）: "
+            f"{', '.join(result.asins_without_cost_row)}"
+        )
     if result.skipped_dates:
         print(
             f"日付列が無くスキップ（{len(result.skipped_dates)}日）: "
