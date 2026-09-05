@@ -15,11 +15,12 @@ def main() -> None:
     credentials = load_ads_credentials(ADS_ENV)
     repository = AdsUnitsRepository(credentials=credentials)
     target = date.today() - timedelta(days=2)
-    units = repository.get_daily_units(target, target)
-    print(f"{target} の行数: {sum(len(v) for v in units.values())}")
-    for day, by_asin in units.items():
-        for asin, count in sorted(by_asin.items(), key=lambda kv: -kv[1])[:10]:
-            print(f"  {day} {asin} {count}")
+    metrics_by_date = repository.get_daily_metrics(target, target)
+    print(f"{target} の行数: {sum(len(v) for v in metrics_by_date.values())}")
+    for day, by_asin in metrics_by_date.items():
+        ranked = sorted(by_asin.items(), key=lambda kv: -kv[1].units)[:10]
+        for asin, metrics in ranked:
+            print(f"  {day} {asin} 個数={metrics.units} 広告費={metrics.cost}")
 
 
 if __name__ == "__main__":
