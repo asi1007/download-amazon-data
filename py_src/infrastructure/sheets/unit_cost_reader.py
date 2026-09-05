@@ -25,16 +25,25 @@ class UnitCostReader:
         fba_fee_column = find_column(headers, FBA_FEE_HEADER)
         cost_column = find_column(headers, COST_HEADER)
 
-        rows = self._worksheet.get()
-        return {
-            asin: UnitCosts(
+        # 同じ ASIN が複数行にあるとき（同一商品を2回登録している行が実在する）、
+        # 素朴な dict 内包表記は最後の行で上書きする。実データでは片方の行にだけ
+        # 手数料が入っており、空の行が勝って粗利益が丸ごと書かれていなかった。
+        # 3つとも揃っている行を優先する
+        costs: dict[str, UnitCosts] = {}
+        for row in self._worksheet.get():
+            asin = self._asin_of(row)
+            if not asin:
+                continue
+            candidate = UnitCosts(
                 selling_fee=self._parse_amount(row, selling_fee_column),
                 fba_fee=self._parse_amount(row, fba_fee_column),
                 cost=self._parse_amount(row, cost_column),
             )
-            for row in rows
-            if (asin := self._asin_of(row))
-        }
+            existing = costs.get(asin)
+            if existing is not None and existing.total_per_unit is not None:
+                continue
+            costs[asin] = candidate
+        return costs
 
     @staticmethod
     def _asin_of(row: list[str]) -> str:

@@ -84,3 +84,33 @@ class TestMalformedCells:
         assert costs["B00EXAMPLF"] == UnitCosts(
             selling_fee=50.0, fba_fee=250.0, cost=180.0
         )
+
+
+class TestDuplicateAsinRows:
+    def test_prefers_the_row_that_has_all_three_costs(self) -> None:
+        # 同じ ASIN の2行のうち後の行が空でも、揃っている行の値を使う。
+        # 実データ (B0FBSCPJJH) がこの形で、粗利益が丸ごと書かれていなかった
+        worksheet = Mock(spec=Worksheet)
+        worksheet.row_values.return_value = ["ASIN", "販売手数料", "FBA手数料", "原価"]
+        worksheet.get.return_value = [
+            ["ASIN", "販売手数料", "FBA手数料", "原価"],
+            ["B0FBSCPJJH", "38.5", "252", "168.58"],
+            ["B0FBSCPJJH", "", "", "168.58"],
+        ]
+
+        costs = UnitCostReader(worksheet).read()
+
+        assert costs["B0FBSCPJJH"] == UnitCosts(selling_fee=38.5, fba_fee=252.0, cost=168.58)
+
+    def test_falls_back_to_a_later_complete_row_when_the_first_is_empty(self) -> None:
+        worksheet = Mock(spec=Worksheet)
+        worksheet.row_values.return_value = ["ASIN", "販売手数料", "FBA手数料", "原価"]
+        worksheet.get.return_value = [
+            ["ASIN", "販売手数料", "FBA手数料", "原価"],
+            ["B0F5P3RM78", "", "", ""],
+            ["B0F5P3RM78", "524.7", "675", "739.29"],
+        ]
+
+        costs = UnitCostReader(worksheet).read()
+
+        assert costs["B0F5P3RM78"] == UnitCosts(selling_fee=524.7, fba_fee=675.0, cost=739.29)
