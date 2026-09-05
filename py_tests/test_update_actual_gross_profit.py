@@ -126,3 +126,14 @@ class TestUpdateActualGrossProfit:
         )
         # SP-API は「2分前より新しい PostedBefore」を 400 で弾く
         assert asked <= datetime.now(timezone.utc) - timedelta(minutes=2)
+
+    def test_raises_when_nothing_could_be_written_despite_having_data(self) -> None:
+        from py_src.domain.value_objects.gross_profit_write_result import (
+            GrossProfitRowsNotFoundError,
+        )
+
+        usecase, sheet, _, _, _, _ = _build()
+        sheet.write_actual_gross_profit.return_value = ActualProfitWriteResult(cells_written=0)
+
+        with pytest.raises(GrossProfitRowsNotFoundError):
+            usecase.execute()

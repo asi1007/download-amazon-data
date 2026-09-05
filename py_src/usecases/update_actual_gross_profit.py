@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
 from py_src.domain.value_objects.actual_profit_cell import ActualProfitWriteResult
+from py_src.domain.value_objects.gross_profit_write_result import (
+    GrossProfitRowsNotFoundError,
+)
 from py_src.usecases.settle_gross_profit import (
     aggregate_settled,
     build_fee_gaps,
@@ -70,6 +73,14 @@ class UpdateActualGrossProfitUseCase:
         )
         cells_by_date = build_profit_cells(sales_by_asin, settled, index.costs)
         write_result = self._sheet.write_actual_gross_profit(cells_by_date)
+        # 書くものがあるのに1セルも書けなかったのは、ラベル行か日付列の異常。
+        # 0件で正常終了すると launchd の失敗通知が鳴らない
+        if cells_by_date and write_result.cells_written == 0:
+            raise GrossProfitRowsNotFoundError(
+                "粗利益を1セルも書き込めませんでした"
+                f"（対象 {sum(len(cells) for cells in cells_by_date.values())} セル、"
+                f"スキップした日付 {len(write_result.skipped_dates)}）"
+            )
 
         gaps = build_fee_gaps(settled, index.costs)
         self._fee_gap_sheet.write(gaps, index.names, now)
