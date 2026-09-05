@@ -273,3 +273,19 @@ class TestAdCostRowObservability:
         assert result.unit_cells_written == 3
         assert result.cost_cells_written == 3
         assert result.cells_written == 6
+
+
+class TestReservedRowGuard:
+    def test_never_writes_into_the_reserved_header_rows(self) -> None:
+        # ASIN が予約行に来ると、ラベル行が行4（ヘッダー）に落ちる。
+        # 個数や広告費で日付ラベルや総売上を潰さない
+        col_a = ["", "B00EXAMPLE", "", ""]
+        col_name = ["", "ルーペ", AD_ROW_LABEL, AD_COST_ROW_LABEL]
+        worksheet = _make_worksheet(col_a, col_name)
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        result = sheet.write_ad_metrics({"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3)}})
+
+        assert result.cells_written == 0
+        worksheet.batch_update.assert_not_called()

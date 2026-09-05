@@ -49,14 +49,17 @@ def bind_label_rows(
 
 
 def read_date_columns(worksheet: Worksheet) -> dict[int, int]:
+    # 同じ日付が2列にあるとき（0:00 の today と daily が競合した、手で足した等）、
+    # 最も左の列を採る。SalesSheet._find_serial_column も左から探すので、
+    # 個数と粗利益が別の列に入る事故を防ぐ。bool は int の派生なので除く
     header = worksheet.row_values(
         HEADER_ROW, value_render_option=ValueRenderOption.unformatted
     )
-    return {
-        value: index
-        for index, value in enumerate(header, start=1)
-        if isinstance(value, int)
-    }
+    columns: dict[int, int] = {}
+    for index, value in enumerate(header, start=1):
+        if isinstance(value, int) and not isinstance(value, bool):
+            columns.setdefault(value, index)
+    return columns
 
 
 def find_column(headers: list[str], name: str) -> int:

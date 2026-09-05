@@ -1,6 +1,8 @@
 from datetime import date
 from unittest.mock import Mock
 
+from gspread import Worksheet
+
 from py_src.infrastructure.sheets.label_rows import (
     AD_COST_ROW_LABEL,
     AD_ROW_LABEL,
@@ -101,3 +103,19 @@ class TestFindColumnNormalization:
 
         with pytest.raises(ValueError):
             find_column(["ASIN"], "原価")
+
+
+class TestReadDateColumnsAmbiguity:
+    def test_prefers_the_leftmost_column_when_a_date_appears_twice(self) -> None:
+        # 同じ日付が2列にあると、個数と粗利益が別の列へ入る事故が起こりうる。
+        # SalesSheet._find_serial_column も左から探すので左を採る
+        worksheet = Mock(spec=Worksheet)
+        worksheet.row_values.return_value = ["ASIN", "商品名", 46269, 46268, 46269]
+
+        assert read_date_columns(worksheet)[46269] == 3
+
+    def test_boolean_header_is_not_treated_as_a_date(self) -> None:
+        worksheet = Mock(spec=Worksheet)
+        worksheet.row_values.return_value = ["ASIN", True, 46269]
+
+        assert read_date_columns(worksheet) == {46269: 3}

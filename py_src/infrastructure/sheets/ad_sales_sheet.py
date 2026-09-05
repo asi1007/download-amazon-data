@@ -87,12 +87,15 @@ class AdSalesSheet:
         label_rows: dict[str, list[int]],
         value_of: Callable[[AdMetrics], int | float],
     ) -> list[SheetRequest]:
+        # 予約行（行1〜4）には書かない。ラベル行が予約行に来ても個数や広告費で
+        # 日付ラベルや総売上を潰さないため（write_sales_nums と同じガード）
         return [
             {"range": rowcol_to_a1(row, column), "values": [[value_of(by_asin.get(asin, AdMetrics()))]]}
             for day, by_asin in metrics_by_date.items()
             for column in columns_by_date[day]
             for asin, rows in label_rows.items()
             for row in rows
+            if row > HEADER_ROW
         ]
 
     def _columns_for(self, day: str) -> list[int]:
