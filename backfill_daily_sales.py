@@ -1,15 +1,19 @@
 from __future__ import annotations
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import gspread
 from dotenv import load_dotenv
 
+from py_src.domain.repositories.sales_repository import SalesRepository
+from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.sales_sheet import SalesSheet
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
 JST = timezone(timedelta(hours=9))
 SHEETS_EPOCH = datetime(1899, 12, 30)
@@ -36,13 +40,23 @@ def main() -> None:
     asin_list = sales_sheet.get_asin_list()
     print(f"対象ASIN: {len(asin_list)}件")
 
+    # 費用（販売手数料・FBA手数料・原価）は日付に依らないため、日数分読み直さず
+    # ループの前に1度だけ読む。
+    costs = UnitCostReader(worksheet).read()
+
     for target_date_str in target_dates:
         _backfill_one_day(
-            sales_sheet, asin_list, sales_repository, target_date_str,
+            sales_sheet, asin_list, sales_repository, target_date_str, costs,
         )
 
 
-def _backfill_one_day(sales_sheet, asin_list, sales_repository, target_date_str):
+def _backfill_one_day(
+    sales_sheet: SalesSheet,
+    asin_list: list[str],
+    sales_repository: SalesRepository,
+    target_date_str: str,
+    costs: dict[str, UnitCosts],
+) -> None:
     target_date = datetime.strptime(target_date_str, "%Y-%m-%d").replace(tzinfo=JST)
     next_day = target_date + timedelta(days=1)
     start_date_utc = target_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -53,7 +67,22 @@ def _backfill_one_day(sales_sheet, asin_list, sales_repository, target_date_str)
     asin_sales = sales_repository.get_daily_sales(asin_list, start_date_utc, end_date_utc)
 
     sales_sheet.write_sales_nums(asin_sales, target_date=target_date.date())
+    _write_gross_profit(sales_sheet, asin_sales, costs, target_date.date())
     print(f"[{target_date_str}] 完了: {sum(1 for s in asin_sales.values() if s.unit_count > 0)}件販売あり")
+
+
+def _write_gross_profit(
+    sales_sheet: SalesSheet,
+    asin_sales: dict[str, SalesInfo],
+    costs: dict[str, UnitCosts],
+    target_date: date,
+) -> None:
+    profits = {
+        asin: profit
+        for asin, sales in asin_sales.items()
+        if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
+    }
+    sales_sheet.write_gross_profit(profits, target_date)
 
 
 def _date_serial(jst_datetime: datetime) -> int:

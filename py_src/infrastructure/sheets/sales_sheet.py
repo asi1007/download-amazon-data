@@ -6,6 +6,7 @@ from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.sheets.label_rows import (
     ASIN_COLUMN,
     GROSS_PROFIT_ROW_LABEL,
+    K_YEN_NUMBER_FORMAT,
     PRODUCT_NAME_HEADER,
     bind_label_rows,
     date_serial as label_date_serial,
@@ -26,7 +27,10 @@ TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千
 CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
 PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
 BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
-GROSS_PROFIT_ESTIMATE_FORMAT = {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}}
+GROSS_PROFIT_ESTIMATE_FORMAT = {
+    "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8},
+    "numberFormat": K_YEN_NUMBER_FORMAT,
+}
 
 
 def apply_column_formats(worksheet: Worksheet, col: int) -> None:

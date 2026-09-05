@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from gspread import Worksheet
 from gspread.utils import rowcol_to_a1
 
 from py_src.domain.value_objects.ad_metrics import AdMetrics
@@ -30,7 +31,7 @@ COL_NAME = [
 def _make_worksheet(
     col_a: list[str] | None = None, col_name: list[str] | None = None
 ) -> Mock:
-    worksheet = Mock()
+    worksheet = Mock(spec=Worksheet)
     worksheet.row_values.return_value = HEADER
     worksheet.col_values.side_effect = lambda col, **kwargs: (
         (col_a if col_a is not None else COL_A)
@@ -171,3 +172,59 @@ class TestAdSalesSheet:
         sheet.write_ad_metrics({"2026-09-01": {"B00EXAMPLE": AdMetrics(units=1, cost=10.0)}})
 
         assert worksheet.batch_update.call_count == 1
+
+    def test_applies_k_number_format_only_to_cost_cells(self) -> None:
+        worksheet = _make_worksheet()
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        sheet.write_ad_metrics(
+            {"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3, cost=120.0)}}
+        )
+
+        worksheet.format.assert_called_once_with(
+            [rowcol_to_a1(8, 3), rowcol_to_a1(16, 3), rowcol_to_a1(12, 3)],
+            {"numberFormat": {"type": "NUMBER", "pattern": '#,##0.0,"K"'}},
+        )
+
+    def test_format_range_has_no_sheet_name_after_batch_update_mutates_requests(self) -> None:
+        # 実運用の gspread.Worksheet.batch_update は渡した dict の "range" を
+        # in-place でシート名付きに書き換える。format() に渡る範囲がその汚染を
+        # 受けないことを確認する（sales_sheet.py の write_gross_profit と同じ罠）。
+        def _prefixing_batch_update(requests: list[dict], **kwargs: object) -> None:
+            for request in requests:
+                request["range"] = f"'売上/日'!{request['range']}"
+
+        worksheet = _make_worksheet()
+        worksheet.batch_update.side_effect = _prefixing_batch_update
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        sheet.write_ad_metrics(
+            {"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3, cost=120.0)}}
+        )
+
+        formatted_ranges = worksheet.format.call_args[0][0]
+        assert formatted_ranges == [rowcol_to_a1(8, 3), rowcol_to_a1(16, 3), rowcol_to_a1(12, 3)]
+        assert all("!" not in cell for cell in formatted_ranges)
+
+    def test_does_not_apply_k_number_format_to_the_ad_referred_units_row(self) -> None:
+        worksheet = _make_worksheet()
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        sheet.write_ad_metrics(
+            {"2026-09-01": {"B00EXAMPLE": AdMetrics(units=3, cost=120.0)}}
+        )
+
+        formatted_ranges = worksheet.format.call_args[0][0]
+        assert rowcol_to_a1(6, 3) not in formatted_ranges  # 広告経由(units)の行
+
+    def test_does_not_call_format_when_no_columns_are_resolved(self) -> None:
+        worksheet = _make_worksheet()
+        sheet = AdSalesSheet(worksheet=worksheet)
+        sheet.get_ad_rows()
+
+        sheet.write_ad_metrics({"2026-08-01": {"B00EXAMPLE": AdMetrics(units=3, cost=120.0)}})
+
+        worksheet.format.assert_not_called()

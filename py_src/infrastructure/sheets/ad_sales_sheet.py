@@ -13,6 +13,7 @@ from py_src.infrastructure.sheets.label_rows import (
     AD_ROW_LABEL,
     ASIN_COLUMN,
     HEADER_ROW,
+    K_YEN_NUMBER_FORMAT,
     PRODUCT_NAME_HEADER,
     bind_label_rows,
     date_serial,
@@ -23,6 +24,7 @@ from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 MetricsByDate = dict[str, dict[str, AdMetrics]]
 SheetRequest = dict[str, object]
+AD_COST_ESTIMATE_FORMAT = {"numberFormat": K_YEN_NUMBER_FORMAT}
 
 
 class AdSalesSheet:
@@ -48,13 +50,21 @@ class AdSalesSheet:
         skipped_dates = tuple(
             day for day, columns in columns_by_date.items() if not columns
         )
-        requests = self._requests_for(
+        unit_requests = self._requests_for(
             metrics_by_date, columns_by_date, self._ad_rows, attrgetter("units")
-        ) + self._requests_for(
+        )
+        cost_requests = self._requests_for(
             metrics_by_date, columns_by_date, self._ad_cost_rows, attrgetter("cost")
         )
+        # batch_update は渡した dict の "range" を in-place でシート名付きに書き換える
+        # (sales_sheet.py の write_gross_profit / write_prices と同じ回避)。K円表記は
+        # 広告費の行だけに適用するため、対象範囲を batch_update を呼ぶ前に控えておく。
+        cost_cells = [request["range"] for request in cost_requests]
+        requests = unit_requests + cost_requests
         if requests:
             self._worksheet.batch_update(requests, value_input_option="RAW")
+        if cost_cells:
+            self._worksheet.format(cost_cells, AD_COST_ESTIMATE_FORMAT)
         return AdWriteResult(cells_written=len(requests), skipped_dates=skipped_dates)
 
     @staticmethod

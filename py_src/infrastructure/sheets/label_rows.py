@@ -19,6 +19,10 @@ ROW_LABELS_IN_ORDER: tuple[str, ...] = (
     AD_COST_ROW_LABEL,
 )
 
+# 粗利益・広告費のセルに適用するK円表記（1,240 -> "1.2K"）。整数の
+# `#,##0,"K"` だと広告費がほぼ 0K に潰れるため小数点1桁にしている。
+K_YEN_NUMBER_FORMAT = {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+
 
 def date_serial(day: date) -> int:
     return (day - SHEETS_EPOCH).days
