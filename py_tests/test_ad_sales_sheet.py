@@ -2,7 +2,8 @@ from unittest.mock import Mock
 
 from gspread.utils import rowcol_to_a1
 
-from py_src.infrastructure.sheets.ad_sales_sheet import AD_ROW_LABEL, AdSalesSheet
+from py_src.infrastructure.sheets.label_rows import AD_ROW_LABEL
+from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 
 # 4行目がヘッダー。A列=ASIN, B列=商品名, C列以降が日付列
 HEADER = ["ASIN", "商品名", 46266, 46265]

@@ -8,7 +8,6 @@ from py_src.domain.value_objects.ad_write_result import AdWriteResult
 from py_src.infrastructure.sheets.label_rows import (
     AD_ROW_LABEL,
     ASIN_COLUMN,
-    ASIN_LENGTH,
     HEADER_ROW,
     PRODUCT_NAME_HEADER,
     bind_label_rows,

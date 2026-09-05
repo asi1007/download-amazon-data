@@ -8,7 +8,7 @@ import gspread
 from dotenv import load_dotenv
 from gspread.utils import rowcol_to_a1
 
-from py_src.infrastructure.sheets.ad_sales_sheet import (
+from py_src.infrastructure.sheets.label_rows import (
     AD_ROW_LABEL,
     ASIN_COLUMN,
     ASIN_LENGTH,
