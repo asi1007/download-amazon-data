@@ -7,13 +7,15 @@ from typing import Any, Protocol
 
 import requests
 
+from py_src.domain.value_objects.ad_metrics import AdMetrics
 from py_src.domain.value_objects.ads_credentials import AdsCredentials
 
 TOKEN_URL = "https://api.amazon.com/auth/o2/token"
 REPORT_MEDIA = "application/vnd.createasyncreportrequest.v3+json"
 REPORT_TYPE_ID = "spAdvertisedProduct"
 UNITS_COLUMN = "unitsSoldSameSku14d"
-COLUMNS = ["date", "advertisedAsin", UNITS_COLUMN]
+COST_COLUMN = "cost"
+COLUMNS = ["date", "advertisedAsin", UNITS_COLUMN, COST_COLUMN]
 TIMEOUT_SECONDS = 90
 DOWNLOAD_TIMEOUT_SECONDS = 180
 DEFAULT_POLL_INTERVAL_SECONDS = 12
@@ -43,7 +45,7 @@ class AdsUnitsRepository:
         self._max_polls = max_polls
         self._access_token: str = ""
 
-    def get_daily_units(self, start: date, end: date) -> dict[str, dict[str, int]]:
+    def get_daily_metrics(self, start: date, end: date) -> dict[str, dict[str, AdMetrics]]:
         report_id = self._create_report(start, end)
         download_url = self._wait_for_report(report_id)
         rows = self._download_rows(download_url)
@@ -102,16 +104,20 @@ class AdsUnitsRepository:
         return json.loads(gzip.decompress(response.content).decode())
 
     @staticmethod
-    def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
-        grouped: dict[str, dict[str, int]] = {}
+    def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, dict[str, AdMetrics]]:
+        grouped: dict[str, dict[str, AdMetrics]] = {}
         for row in rows:
             day = str(row.get("date") or "")
             asin = str(row.get("advertisedAsin") or "")
             if not day or not asin:
                 continue
             units = int(row.get(UNITS_COLUMN) or 0)
+            cost = float(row.get(COST_COLUMN) or 0.0)
             by_asin = grouped.setdefault(day, {})
-            by_asin[asin] = by_asin.get(asin, 0) + units
+            existing = by_asin.get(asin, AdMetrics())
+            by_asin[asin] = AdMetrics(
+                units=existing.units + units, cost=existing.cost + cost,
+            )
         return grouped
 
     def _headers(self) -> dict[str, str]:
