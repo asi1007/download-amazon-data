@@ -74,6 +74,54 @@ def label_row_numbers(plan: list[tuple[int, int]]) -> list[tuple[int, str]]:
     return numbered
 
 
+def _label_grid_range(sheet_id: int, row: int, name_column: int) -> dict:
+    # Sheets API の GridRange は0起点。label_row_numbers が返す行番号は1起点なので
+    # ここで -1 する（endRowIndex は exclusive なのでそのまま row を使う）。
+    return {
+        "sheetId": sheet_id,
+        "startRowIndex": row - 1,
+        "endRowIndex": row,
+        "startColumnIndex": name_column - 1,
+        "endColumnIndex": name_column,
+    }
+
+
+def build_label_requests(
+    sheet_id: int, name_column: int, labeled_rows: list[tuple[int, str]]
+) -> list[dict]:
+    return [
+        {
+            "updateCells": {
+                "range": _label_grid_range(sheet_id, row, name_column),
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": label}}]}],
+                "fields": "userEnteredValue",
+            }
+        }
+        for row, label in labeled_rows
+    ]
+
+
+def build_background_requests(
+    sheet_id: int, name_column: int, labeled_rows: list[tuple[int, str]]
+) -> list[dict]:
+    return [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": row - 1,
+                    "endRowIndex": row,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": name_column,
+                },
+                "cell": {"userEnteredFormat": LABEL_ROW_BACKGROUND},
+                "fields": "userEnteredFormat.backgroundColor",
+            }
+        }
+        for row, _ in labeled_rows
+    ]
+
+
 def _open_worksheet() -> gspread.Worksheet:
     load_dotenv()
     credentials_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json")
@@ -83,33 +131,24 @@ def _open_worksheet() -> gspread.Worksheet:
 
 @retry_on_transient_error
 def _apply_label_row_plan(worksheet: gspread.Worksheet, name_column: int) -> list[tuple[int, str]]:
-    # 呼び出しのたびに読み直して計画を立て直す。@retry_on_transient_error はこの関数
-    # ごと再試行するため、「行の挿入(spreadsheet.batch_update)は成功したがラベル書き込み
-    # (worksheet.batch_update)で失敗」のような部分失敗が起きても、リトライ時はその時点の
-    # シート状態から再計画する。これにより同じ ASIN の下にラベル行が二重に挿入されることを防ぐ。
+    # 呼び出しのたびに読み直して計画を立て直す。行の挿入・ラベル書き込み・背景色は
+    # すべて1回の spreadsheet.batch_update にまとめて送る（原子的に適用される）ため、
+    # 「挿入だけ成功してラベル書き込みが失敗する」という部分状態は起こらない。
+    # @retry_on_transient_error による再試行時も、シートは「まだ何も反映されていない
+    # 状態」のまま読み直すことになり、同じ計画を立てても二重挿入にはならない。
     asin_values = worksheet.col_values(ASIN_COLUMN)
     name_values = worksheet.col_values(name_column)
     plan = plan_label_row_insertions(asin_values, name_values)
     if not plan:
         return []
 
-    worksheet.spreadsheet.batch_update({"requests": build_insert_requests(worksheet.id, plan)})
-
     labeled_rows = label_row_numbers(plan)
-    label_column_letter = gspread.utils.rowcol_to_a1(1, name_column).rstrip("1")
-    worksheet.batch_update(
-        [
-            {"range": f"{label_column_letter}{row}", "values": [[label]]}
-            for row, label in labeled_rows
-        ],
-        value_input_option="RAW",
+    requests = (
+        build_insert_requests(worksheet.id, plan)
+        + build_label_requests(worksheet.id, name_column, labeled_rows)
+        + build_background_requests(worksheet.id, name_column, labeled_rows)
     )
-    worksheet.batch_format(
-        [
-            {"range": f"A{row}:{label_column_letter}{row}", "format": LABEL_ROW_BACKGROUND}
-            for row, _ in labeled_rows
-        ]
-    )
+    worksheet.spreadsheet.batch_update({"requests": requests})
     return labeled_rows
 
 
