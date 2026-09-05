@@ -2,6 +2,8 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone, timedelta
 from py_src.domain.repositories.sales_repository import SalesRepository
+from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
 
 JST = timezone(timedelta(hours=9))
@@ -20,9 +22,15 @@ HOURLY_SALES_DEADLINE_SECONDS = 20 * 60
 
 
 class UpdateTodaySalesUseCase:
-    def __init__(self, sales_sheet: object, sales_repository: SalesRepository) -> None:
+    def __init__(
+        self,
+        sales_sheet: object,
+        sales_repository: SalesRepository,
+        cost_reader: object,
+    ) -> None:
         self._sheet = sales_sheet
         self._sales_repo = sales_repository
+        self._cost_reader = cost_reader
 
     def execute(self) -> None:
         today = datetime.now(JST).date()
@@ -39,12 +47,27 @@ class UpdateTodaySalesUseCase:
         except SalesFetchDeadlineExceededError as error:
             # A partial result understates row 3 (total sales) if summed as-is, so
             # tell the sheet not to touch it — leaving the previous hour's total in
-            # place is more honest than replacing it with an incomplete sum.
+            # place is more honest than replacing it with an incomplete sum. The
+            # gross profit row has no such total to distort, so it is written for
+            # whichever ASINs did make it in before the deadline.
             self._sheet.write_sales_nums(
                 error.partial_results, target_date=today, include_total=False,
             )
+            self._write_gross_profit(error.partial_results, today)
             raise
         self._sheet.write_sales_nums(asin_sales, target_date=today)
+        self._write_gross_profit(asin_sales, today)
+
+    def _write_gross_profit(
+        self, asin_sales: dict[str, SalesInfo], target_date: date
+    ) -> None:
+        costs = self._cost_reader.read()
+        profits = {
+            asin: profit
+            for asin, sales in asin_sales.items()
+            if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
+        }
+        self._sheet.write_gross_profit(profits, target_date)
 
     @staticmethod
     def _get_today_range(today: date) -> tuple[str, str]:

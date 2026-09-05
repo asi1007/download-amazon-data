@@ -16,6 +16,7 @@ from py_src.infrastructure.sheets.amazon_ad_sheet import AmazonAdSheet
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
 from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
+from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
@@ -71,10 +72,12 @@ def update_daily_sales() -> None:
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
     sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    cost_reader = UnitCostReader(sales_ws)
     usecase = UpdateDailySalesUseCase(
         sales_sheet=sales_sheet,
         sales_repository=sales_repository,
         price_repository=price_repository,
+        cost_reader=cost_reader,
     )
     usecase.execute()
 
@@ -86,9 +89,11 @@ def update_today_sales() -> None:
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
     sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    cost_reader = UnitCostReader(sales_ws)
     usecase = UpdateTodaySalesUseCase(
         sales_sheet=sales_sheet,
         sales_repository=sales_repository,
+        cost_reader=cost_reader,
     )
     usecase.execute()
 
