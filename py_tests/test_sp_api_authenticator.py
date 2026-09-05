@@ -81,6 +81,28 @@ class TestSpApiAuthenticator:
         assert session.post.call_count == 2
 
     @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
+    def test_persistent_403_gives_up_instead_of_looping_forever(
+        self, mock_sleep: Mock
+    ) -> None:
+        # Finances のロールが付いていない・refresh_token が失効している等で 403 が
+        # 続く場合、回数制限が無いと SP-API を叩き続けるタイトループになる
+        # （19時間ハングと同じ、誰にも通知されない無音の暴走）
+        session = Mock()
+        session.post.return_value = _make_response({"access_token": "token"})
+        forbidden = _make_response({}, status_code=403)
+        forbidden.raise_for_status.side_effect = requests.exceptions.HTTPError("403")
+        session.request.return_value = forbidden
+        auth = SpApiAuthenticator(
+            client_id="id", client_secret="secret", refresh_token="refresh", session=session,
+        )
+        auth.authenticate()
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            auth.request("GET", "https://example.com/api", max_retries=5)
+
+        assert session.request.call_count == 5
+
+    @patch("py_src.infrastructure.api.sp_api_authenticator.time.sleep")
     def test_request_retries_on_connection_error(self, mock_sleep: Mock) -> None:
         session = Mock()
         session.post.return_value = _make_response({"access_token": "token"})

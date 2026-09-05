@@ -1,25 +1,13 @@
 from __future__ import annotations
-import time
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 from py_src.domain.value_objects.item_fee import ItemFee
-from py_src.infrastructure.api.sp_api_authenticator import (
-    SpApiAuthenticator,
-    SP_API_BASE,
-    SP_API_REQUEST_TIMEOUT_SECONDS,
-)
-
-DEFAULT_PAUSE_SECONDS = 2
+from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
 
 
 class FinancesRepository:
-    def __init__(
-        self,
-        authenticator: SpApiAuthenticator,
-        pause_seconds: float = DEFAULT_PAUSE_SECONDS,
-    ) -> None:
+    def __init__(self, authenticator: SpApiAuthenticator) -> None:
         self._auth = authenticator
-        self._pause_seconds = pause_seconds
 
     def get_item_fees(self, posted_after: str, posted_before: str) -> list[ItemFee]:
         self._auth.authenticate()
@@ -30,50 +18,52 @@ class FinancesRepository:
         all_events: list[dict] = []
         url = self._events_url(posted_after, posted_before)
         while True:
-            response = self._auth._session.get(
-                url, headers=self._auth.headers(), timeout=SP_API_REQUEST_TIMEOUT_SECONDS,
-            )
-            if response.status_code == 403:
-                self._auth.authenticate()
-                continue
-            response.raise_for_status()
-            payload = response.json().get("payload", {})
+            payload = self._auth.request("GET", url).json().get("payload", {})
             financial_events = payload.get("FinancialEvents", {})
             all_events.extend(financial_events.get("ShipmentEventList", []))
             next_token = payload.get("NextToken")
             if not next_token:
                 break
-            time.sleep(self._pause_seconds)
-            url = self._events_url(posted_after, posted_before, next_token)
+            url = self._next_page_url(next_token)
         return all_events
 
     @staticmethod
-    def _events_url(posted_after: str, posted_before: str, next_token: str | None = None) -> str:
-        url = (
+    def _events_url(posted_after: str, posted_before: str) -> str:
+        return (
             f"{SP_API_BASE}/finances/v0/financialEvents"
             f"?PostedAfter={posted_after}"
             f"&PostedBefore={posted_before}"
         )
-        if next_token:
-            url += f"&NextToken={quote(next_token)}"
-        return url
+
+    @staticmethod
+    def _next_page_url(next_token: str) -> str:
+        # NextToken は PostedAfter/PostedBefore と排他。併記すると2ページ目だけが
+        # 本番で落ちる。tools/check_finances_api.py で実物を確認した形に揃える
+        return f"{SP_API_BASE}/finances/v0/financialEvents?{urlencode({'NextToken': next_token})}"
 
     @staticmethod
     def _flatten_item_fees(shipment_events: list[dict]) -> list[ItemFee]:
         item_fees: list[ItemFee] = []
         for event in shipment_events:
-            order_id = event["AmazonOrderId"]
+            order_id = event.get("AmazonOrderId")
+            if not order_id:
+                continue
             for shipment_item in event.get("ShipmentItemList", []):
                 fee_list = shipment_item.get("ItemFeeList", [])
                 if not fee_list:
                     continue
+                # 1件でも形の違うイベントが混ざると14日分の取得が丸ごと死ぬ。
+                # 実物を叩いた tools/check_finances_api.py と同じく .get() で通す
                 negative_total = sum(
-                    fee["FeeAmount"]["CurrencyAmount"] for fee in fee_list
+                    fee.get("FeeAmount", {}).get("CurrencyAmount", 0) for fee in fee_list
                 )
+                seller_sku = shipment_item.get("SellerSKU")
+                if not seller_sku:
+                    continue
                 item_fees.append(
                     ItemFee(
                         order_id=order_id,
-                        seller_sku=shipment_item["SellerSKU"],
+                        seller_sku=seller_sku,
                         fee_amount=-negative_total,
                     )
                 )
