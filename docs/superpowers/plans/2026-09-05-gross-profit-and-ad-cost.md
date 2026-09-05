@@ -240,29 +240,37 @@ git commit -m "refactor: ラベル行の解決を共有モジュールへ切り�
 
 ---
 
-### Task 2: 粗利益行と広告費行を挿入する移行スクリプト
+### Task 2: 移行スクリプトを全ラベル行に一般化する
 
 **Files:**
-- Create: `insert_profit_rows.py`
-- Test: `py_tests/test_insert_profit_rows.py`
+- Modify: `insert_ad_rows.py`
+- Test: `py_tests/test_insert_ad_rows.py`
 
 **Interfaces:**
-- Consumes: `label_rows` の定数（Task 1）
-- Produces: `plan_profit_row_insertions(asin_values: list[str], name_values: list[str]) -> list[int]`（挿入位置＝広告経由の行番号、**降順**）、`build_insert_requests(sheet_id: int, insert_rows: list[int], count: int) -> list[dict]`
+- Consumes: `ROW_LABELS_IN_ORDER` / `bind_label_rows` / 定数（Task 1）
+- Produces: `plan_label_row_insertions(asin_values: list[str], name_values: list[str]) -> list[tuple[int, int]]`（(ASIN 行の直後に続くラベル行の最後の行番号, 不足数) の**降順**）
+- Produces: `existing_label_run(index: int, name_values: list[str]) -> int`（ASIN 行の直下から `ROW_LABELS_IN_ORDER` の順に何個そろっているか）
 
-いま各 ASIN は「ASIN 行 + 広告経由 行」の2本。**広告経由の行の直下に2行挿入**して `粗利益` `広告費` を書く。
+いまのスクリプトは「1 ASIN に広告行1本」に特化している。**各 ASIN の直下に `ROW_LABELS_IN_ORDER` の3本が順番どおり並ぶ**ようにする。
 
-`insert_ad_rows.py` は触らない。あちらは「1 ASIN に広告行1本」に特化した復旧ロジックを持っており、一般化すると壊れやすい。
+- 3本ともそろっていれば何もしない
+- 現在の状態（`広告経由` だけある）なら **2本足す**
+- 1本も無ければ 3本足す
+
+**既にある行は動かさない。** 広告経由の行には実データが入っているので、その下に足す。
+
+ユーザーの判断で、既存の復旧ロジック（挿入済みだが未ラベルの行を拾う）は**一般化の過程で失われて構わない**。このスクリプトは今回の移行後は使わない見込みのため。ただし**冪等性（何度実行しても増えない）は必ず保つこと**。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
-`py_tests/test_insert_profit_rows.py`:
+`py_tests/test_insert_ad_rows.py` を書き直す（既存のテストは1ラベル前提なので置き換える）:
 
 ```python
-from insert_profit_rows import (
+from insert_ad_rows import (
     build_insert_requests,
-    plan_profit_row_insertions,
-    profit_row_numbers,
+    existing_label_run,
+    label_row_numbers,
+    plan_label_row_insertions,
 )
 from py_src.infrastructure.sheets.label_rows import (
     AD_COST_ROW_LABEL,
@@ -271,40 +279,72 @@ from py_src.infrastructure.sheets.label_rows import (
 )
 
 
-class TestPlanProfitRowInsertions:
-    def test_targets_each_ad_row_in_descending_order(self) -> None:
+class TestExistingLabelRun:
+    def test_counts_labels_present_in_order(self) -> None:
+        names = ["", "", "", "商品名", "ルーペ", AD_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, ""]
+
+        assert existing_label_run(4, names) == 2
+
+    def test_zero_when_next_row_is_not_the_first_label(self) -> None:
+        names = ["", "", "", "商品名", "ルーペ", "メモ"]
+
+        assert existing_label_run(4, names) == 0
+
+    def test_stops_at_the_first_mismatch(self) -> None:
+        # 順番が違えば、そこで打ち切る
+        names = ["", "", "", "商品名", "ルーペ", AD_ROW_LABEL, AD_COST_ROW_LABEL]
+
+        assert existing_label_run(4, names) == 1
+
+    def test_all_three_present(self) -> None:
+        names = [
+            "", "", "", "商品名", "ルーペ",
+            AD_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL,
+        ]
+
+        assert existing_label_run(4, names) == 3
+
+
+class TestPlanLabelRowInsertions:
+    def test_adds_the_missing_two_for_the_current_sheet(self) -> None:
+        # いまの状態: 各 ASIN の下に 広告経由 が1本だけ
         asin_values = ["", "", "", "ASIN", "B00EXAMPLE", "", "B00EXAMPLF", ""]
         name_values = ["", "", "", "商品名", "ルーペ", AD_ROW_LABEL, "ボール", AD_ROW_LABEL]
 
-        assert plan_profit_row_insertions(asin_values, name_values) == [8, 6]
+        assert plan_label_row_insertions(asin_values, name_values) == [(8, 2), (6, 2)]
 
-    def test_skips_when_profit_row_already_follows(self) -> None:
+    def test_adds_all_three_when_none_present(self) -> None:
+        asin_values = ["", "", "", "ASIN", "B00EXAMPLE"]
+        name_values = ["", "", "", "商品名", "ルーペ"]
+
+        assert plan_label_row_insertions(asin_values, name_values) == [(5, 3)]
+
+    def test_nothing_to_do_when_all_present(self) -> None:
         asin_values = ["", "", "", "ASIN", "B00EXAMPLE", "", "", ""]
         name_values = [
-            "", "", "", "商品名", "ルーペ", AD_ROW_LABEL,
-            GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL,
+            "", "", "", "商品名", "ルーペ",
+            AD_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL,
         ]
 
-        assert plan_profit_row_insertions(asin_values, name_values) == []
+        assert plan_label_row_insertions(asin_values, name_values) == []
 
-    def test_ignores_ad_row_without_an_asin_above(self) -> None:
-        asin_values = ["", "", "", "ASIN", "見出し", ""]
-        name_values = ["", "", "", "商品名", "", AD_ROW_LABEL]
+    def test_ignores_heading_rows(self) -> None:
+        asin_values = ["", "", "", "ASIN", "様子見", "やめる"]
+        name_values = ["", "", "", "商品名", "", ""]
 
-        assert plan_profit_row_insertions(asin_values, name_values) == []
+        assert plan_label_row_insertions(asin_values, name_values) == []
 
-    def test_does_not_touch_a_row_that_holds_other_content(self) -> None:
-        # 広告経由の直下に別の文字が入っている場合は「未ラベルの残骸」ではなく既存データ。
-        # 上書きせず、その上に2行挿入する
-        asin_values = ["", "", "", "ASIN", "B00EXAMPLE", "", ""]
-        name_values = ["", "", "", "商品名", "ルーペ", AD_ROW_LABEL, "メモ"]
+    def test_does_not_overwrite_unrelated_content_below_an_asin(self) -> None:
+        # 直下に別の文字がある場合、ラベルは0本とみなして上に挿入する（上書きしない）
+        asin_values = ["", "", "", "ASIN", "B00EXAMPLE", ""]
+        name_values = ["", "", "", "商品名", "ルーペ", "メモ"]
 
-        assert plan_profit_row_insertions(asin_values, name_values) == [6]
+        assert plan_label_row_insertions(asin_values, name_values) == [(5, 3)]
 
 
 class TestBuildInsertRequests:
-    def test_inserts_two_rows_below_each_target(self) -> None:
-        requests = build_insert_requests(sheet_id=551300985, insert_rows=[8, 6], count=2)
+    def test_inserts_the_missing_count_below_the_run(self) -> None:
+        requests = build_insert_requests(sheet_id=551300985, plan=[(8, 2), (6, 2)])
 
         ranges = [r["insertDimension"]["range"] for r in requests]
         assert ranges[0] == {
@@ -315,46 +355,64 @@ class TestBuildInsertRequests:
         }
 
     def test_does_not_inherit_formatting(self) -> None:
-        requests = build_insert_requests(sheet_id=1, insert_rows=[6], count=2)
+        requests = build_insert_requests(sheet_id=1, plan=[(5, 3)])
 
         assert requests[0]["insertDimension"]["inheritFromBefore"] is False
 
 
-class TestProfitRowNumbers:
-    def test_each_insertion_shifts_the_ones_below(self) -> None:
-        # 行6と行8の直下へ2行ずつ入れると、粗利益/広告費は (7,8) と (11,12)
-        assert profit_row_numbers([8, 6]) == [(7, 8), (11, 12)]
+class TestLabelRowNumbers:
+    def test_returns_row_and_label_pairs_after_the_shift(self) -> None:
+        # 行6の下に2本、行8の下に2本入れると、
+        # 1件目は行7=粗利益/行8=広告費、2件目は行11=粗利益/行12=広告費
+        assert label_row_numbers([(8, 2), (6, 2)]) == [
+            (7, GROSS_PROFIT_ROW_LABEL),
+            (8, AD_COST_ROW_LABEL),
+            (11, GROSS_PROFIT_ROW_LABEL),
+            (12, AD_COST_ROW_LABEL),
+        ]
 
-    def test_single_insertion(self) -> None:
-        assert profit_row_numbers([6]) == [(7, 8)]
+    def test_all_three_labels_when_nothing_existed(self) -> None:
+        assert label_row_numbers([(5, 3)]) == [
+            (6, AD_ROW_LABEL),
+            (7, GROSS_PROFIT_ROW_LABEL),
+            (8, AD_COST_ROW_LABEL),
+        ]
 ```
 
 - [ ] **Step 2: テストが落ちることを確認**
 
-Run: `.venv/bin/python -m pytest py_tests/test_insert_profit_rows.py -v`
-Expected: FAIL（`ModuleNotFoundError`）
+Run: `.venv/bin/python -m pytest py_tests/test_insert_ad_rows.py -v`
+Expected: FAIL
 
 - [ ] **Step 3: 実装する**
 
-`insert_profit_rows.py` をリポジトリのルートに置く。`insert_ad_rows.py` の書き方（`main()` と `if __name__ == "__main__"`、`--dry-run`、降順挿入を1回の `batch_update` にまとめる）に合わせる。
-
-要点:
-
 ```python
-def plan_profit_row_insertions(asin_values: list[str], name_values: list[str]) -> list[int]:
-    ad_rows = bind_label_rows(asin_values, name_values, AD_ROW_LABEL)
-    targets: list[int] = []
-    for rows in ad_rows.values():
-        for row in rows:
-            below = row  # 0起点で「次の行」
-            name_below = name_values[below].strip() if below < len(name_values) else ""
-            if name_below == GROSS_PROFIT_ROW_LABEL:
-                continue
-            targets.append(row)
-    return sorted(targets, reverse=True)
+def existing_label_run(index: int, name_values: list[str]) -> int:
+    run = 0
+    for offset, label in enumerate(ROW_LABELS_IN_ORDER, start=1):
+        position = index + offset
+        name = name_values[position].strip() if position < len(name_values) else ""
+        if name != label:
+            break
+        run += 1
+    return run
 
 
-def build_insert_requests(sheet_id: int, insert_rows: list[int], count: int) -> list[dict]:
+def plan_label_row_insertions(
+    asin_values: list[str], name_values: list[str]
+) -> list[tuple[int, int]]:
+    plan: list[tuple[int, int]] = []
+    for index, value in enumerate(asin_values):
+        if len(value.strip()) != ASIN_LENGTH:
+            continue
+        run = existing_label_run(index, name_values)
+        missing = len(ROW_LABELS_IN_ORDER) - run
+        if missing:
+            plan.append((index + 1 + run, missing))
+    return sorted(plan, reverse=True)
+
+
+def build_insert_requests(sheet_id: int, plan: list[tuple[int, int]]) -> list[dict]:
     return [
         {
             "insertDimension": {
@@ -367,45 +425,49 @@ def build_insert_requests(sheet_id: int, insert_rows: list[int], count: int) -> 
                 "inheritFromBefore": False,
             }
         }
-        for row in insert_rows
+        for row, count in plan
     ]
 
 
-def profit_row_numbers(insert_rows: list[int]) -> list[tuple[int, int]]:
-    ascending = sorted(insert_rows)
-    return [
-        (row + offset * 2 + 1, row + offset * 2 + 2)
-        for offset, row in enumerate(ascending)
-    ]
+def label_row_numbers(plan: list[tuple[int, int]]) -> list[tuple[int, str]]:
+    ascending = sorted(plan)
+    numbered: list[tuple[int, str]] = []
+    shift = 0
+    for row, count in ascending:
+        for offset in range(count):
+            label = ROW_LABELS_IN_ORDER[len(ROW_LABELS_IN_ORDER) - count + offset]
+            numbered.append((row + shift + offset + 1, label))
+        shift += count
+    return numbered
 ```
 
-`main()` は `insert_ad_rows.py` と同じ流れ:
+`main()` の流れは今と同じ:
 1. ワークシートを開き、A列と商品名列を読む
-2. `plan_profit_row_insertions` で対象を出し、件数と対象 ASIN を表示
+2. `plan_label_row_insertions` で対象を出し、件数と不足数を表示
 3. `--dry-run` ならここで終了
 4. `build_insert_requests` を1回の `spreadsheet.batch_update` で送る
-5. `profit_row_numbers` の行へ `粗利益` `広告費` を `batch_update` で書く
-6. 挿入した行に薄いグレー（`{red: 0.95, green: 0.95, blue: 0.95}`、A列〜商品名列）を `batch_format` で塗る
+5. `label_row_numbers` の行へラベルを `batch_update` で書く
+6. 薄いグレー（`{red: 0.95, green: 0.95, blue: 0.95}`、A列〜商品名列）を `batch_format` で塗る
 
-**背景色とラベルは `insert_ad_rows.py` と同じ値・同じ範囲にすること**（既存の広告行と見た目を揃えるため）。
+**予約行（1〜4行）には書かない。** `plan_label_row_insertions` は A列が10文字の行だけを対象にするので自然に守られるが、念のため確認すること。
 
 - [ ] **Step 4: テストが通ることを確認**
 
-Run: `.venv/bin/python -m pytest py_tests/test_insert_profit_rows.py -v`
-Expected: PASS（7件）
+Run: `.venv/bin/python -m pytest py_tests/test_insert_ad_rows.py -v`
+Expected: PASS
 
 - [ ] **Step 5: dry-run の出力を確認する**
 
-Run: `.venv/bin/python insert_profit_rows.py --dry-run`
-Expected: 対象が **77件**（現在の ASIN 数）。見出し行が混ざっていないこと
+Run: `.venv/bin/python insert_ad_rows.py --dry-run`
+Expected: 対象が **77件、各2本不足**。見出し行が混ざっていないこと
 
 **これは読み取りのみなので実行してよい。本実行はしないこと。**
 
 - [ ] **Step 6: コミット**
 
 ```bash
-git add insert_profit_rows.py py_tests/test_insert_profit_rows.py pyproject.toml
-git commit -m "feat: 広告経由の行の下へ粗利益・広告費の行を挿入する移行スクリプト"
+git add insert_ad_rows.py py_tests/test_insert_ad_rows.py pyproject.toml
+git commit -m "feat: 移行スクリプトを粗利益・広告費の行にも対応させる"
 ```
 
 ---
@@ -622,7 +684,7 @@ git commit -m "feat(ads): 広告費を広告費の行へ書く"
 
 - [ ] **Step 1: dry-run で対象を確認**
 
-Run: `.venv/bin/python insert_profit_rows.py --dry-run`
+Run: `.venv/bin/python insert_ad_rows.py --dry-run`
 Expected: 77件
 
 - [ ] **Step 2: ユーザーに確認して本実行**
