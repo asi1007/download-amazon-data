@@ -614,6 +614,27 @@ class TestWriteGrossProfit:
             {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}},
         )
 
+    def test_format_range_has_no_sheet_name_after_batch_update_mutates_requests(
+        self,
+    ) -> None:
+        # 実運用の gspread.Worksheet.batch_update は渡した dict の "range" を
+        # in-place で "'売上/日'!CS9" のようなシート名付きに書き換える。この
+        # side_effect でそれを再現し、format() に渡る範囲がその汚染を受けない
+        # ことを確認する。
+        def _prefixing_batch_update(requests: list[dict], **kwargs: object) -> None:
+            for request in requests:
+                request["range"] = f"'売上/日'!{request['range']}"
+
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sales_ws.batch_update.side_effect = _prefixing_batch_update
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+
+        formatted_ranges = sales_ws.format.call_args[0][0]
+        assert formatted_ranges == [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)]
+        assert all("!" not in cell for cell in formatted_ranges)
+
     def test_returns_zero_and_writes_nothing_when_date_column_missing(self) -> None:
         sales_ws = _create_mock_worksheet_for_gross_profit()
         sheet = SalesSheet(sales_worksheet=sales_ws)

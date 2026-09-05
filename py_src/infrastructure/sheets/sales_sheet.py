@@ -250,14 +250,17 @@ class SalesSheet:
         if not targets:
             return 0
 
+        # batch_update は渡した dict の "range" を in-place でシート名付きに書き換える
+        # (例: "CS9" -> "'売上/日'!CS9")。format() はシート名付きの範囲を受け付けないため、
+        # batch_update に渡す前に書式対象のセルを別のリストへ保持しておく
+        # (write_prices の written_cells と同じ回避)。
+        written_cells = [rowcol_to_a1(row, column) for _, row in targets]
         requests = [
-            {"range": rowcol_to_a1(row, column), "values": [[profit_by_asin[asin]]]}
-            for asin, row in targets
+            {"range": cell, "values": [[profit_by_asin[asin]]]}
+            for cell, (asin, _) in zip(written_cells, targets)
         ]
         self._worksheet.batch_update(requests, value_input_option="RAW")
-        self._worksheet.format(
-            [request["range"] for request in requests], GROSS_PROFIT_ESTIMATE_FORMAT
-        )
+        self._worksheet.format(written_cells, GROSS_PROFIT_ESTIMATE_FORMAT)
         return len(requests)
 
     def _gross_profit_rows(self) -> dict[str, list[int]]:
