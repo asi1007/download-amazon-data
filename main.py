@@ -10,7 +10,7 @@ from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesReposito
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
 from py_src.infrastructure.api.sp_api_inventory_repository import SpApiInventoryRepository
 from py_src.infrastructure.api.finances_repository import FinancesRepository
-from py_src.infrastructure.api.orders_repository import OrdersRepository
+from py_src.infrastructure.api.orders_report_repository import OrdersReportRepository
 from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
@@ -155,7 +155,7 @@ def update_actual_gross_profit() -> None:
     usecase = UpdateActualGrossProfitUseCase(
         sales_sheet=SalesSheet(sales_worksheet=sales_ws),
         sales_repository=SpApiSalesRepository(authenticator=authenticator),
-        orders_repository=OrdersRepository(authenticator=authenticator),
+        orders_repository=OrdersReportRepository(authenticator=authenticator),
         finances_repository=FinancesRepository(authenticator=authenticator),
         index_reader=ProductIndexReader(sales_ws),
         fee_gap_sheet=FeeGapSheet(spreadsheet),

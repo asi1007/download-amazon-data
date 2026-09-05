@@ -8,7 +8,7 @@ from py_src.domain.value_objects.finance_record import FinanceRecord
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.unit_costs import UnitCosts
 from py_src.infrastructure.api.finances_repository import FinancesRepository
-from py_src.infrastructure.api.orders_repository import OrdersRepository
+from py_src.infrastructure.api.orders_report_repository import OrdersReportRepository
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.fee_gap_sheet import FeeGapSheet
 from py_src.infrastructure.sheets.product_index_reader import ProductIndex, ProductIndexReader
@@ -35,7 +35,7 @@ def _build(records: list[FinanceRecord] | None = None) -> tuple:
     sales_repo.get_sales_by_date.return_value = {
         "B00EXAMPLE": {ORDER_DATE: SalesInfo(unit_count=3, total_sales_amount=6000.0)}
     }
-    orders_repo = Mock(spec=OrdersRepository)
+    orders_repo = Mock(spec=OrdersReportRepository)
     orders_repo.get_purchase_dates.return_value = {"503-1": ORDER_DATE}
     finances_repo = Mock(spec=FinancesRepository)
     finances_repo.get_finance_records.return_value = (

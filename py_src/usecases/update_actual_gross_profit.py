@@ -62,9 +62,9 @@ class UpdateActualGrossProfitUseCase:
             )
 
         index = self._index_reader.read()
-        purchase_dates = self._orders_repo.get_purchase_dates(
-            _date_to_utc_iso(start), _date_to_utc_iso(end)
-        )
+        # 注文日は Reports API から取る。getOrders は 1分あたり1リクエストで、
+        # 14日分の約100ページに100分かかる（実 API の検証が 429 で落ちた）
+        purchase_dates = self._orders_repo.get_purchase_dates(start, end)
         settled, unknown_sku_count = aggregate_settled(
             records, purchase_dates, index.sku_to_asin
         )

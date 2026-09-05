@@ -48,13 +48,23 @@ class SpApiAuthenticator:
             "x-amz-access-token": self._access_token or "",
         }
 
-    def request(self, method: str, url: str, max_retries: int = 5) -> requests.Response:
+    def request(
+        self,
+        method: str,
+        url: str,
+        max_retries: int = 5,
+        json: dict | None = None,
+    ) -> requests.Response:
         connection_error: requests.exceptions.RequestException | None = None
         for attempt in range(max_retries):
             time.sleep(2 if attempt == 0 else 10)
             try:
                 response = self._session.request(
-                    method, url, headers=self.headers(), timeout=SP_API_REQUEST_TIMEOUT_SECONDS,
+                    method,
+                    url,
+                    headers=self.headers(),
+                    json=json,
+                    timeout=SP_API_REQUEST_TIMEOUT_SECONDS,
                 )
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
                 connection_error = error

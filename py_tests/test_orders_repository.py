@@ -103,18 +103,3 @@ class TestOrdersRepository:
         repo = self._create_repo(mock_session)
         repo.get_orders_with_items(created_after="2026-03-15T00:00:00Z")
         assert mock_session.request.call_args.kwargs["timeout"] == SP_API_REQUEST_TIMEOUT_SECONDS
-
-    def test_get_purchase_dates_maps_order_id_to_date(self) -> None:
-        auth = Mock()
-        response = Mock()
-        response.status_code = 200
-        response.json.return_value = {"payload": {"Orders": [
-            {"AmazonOrderId": "249-1", "PurchaseDate": "2026-09-01T10:00:00Z"},
-            {"AmazonOrderId": "249-2", "PurchaseDate": "2026-09-02T23:30:00Z"},
-        ]}}
-        auth.request.return_value = response
-        repository = OrdersRepository(authenticator=auth)
-
-        dates = repository.get_purchase_dates("2026-09-01T00:00:00Z", "2026-09-03T00:00:00Z")
-
-        assert dates == {"249-1": date(2026, 9, 1), "249-2": date(2026, 9, 3)}

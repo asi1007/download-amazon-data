@@ -12,6 +12,9 @@ class OrdersRepository:
     def __init__(self, authenticator: SpApiAuthenticator) -> None:
         self._auth = authenticator
 
+    # getOrders は 1分あたり1リクエスト（バースト20）しか通らない。数百ページに
+    # なる範囲をここから取ると 429 で落ちる（実際に落ちた）。まとまった件数が
+    # 要るなら OrdersReportRepository（Reports API）を使うこと
     def get_orders_with_items(self, created_after: str) -> list[Order]:
         self._auth.authenticate()
         raw_orders = self._fetch_all_orders(created_after)
@@ -34,40 +37,6 @@ class OrdersRepository:
                 break
             url = _next_page_url(f"{SP_API_BASE}/orders/v0/orders", next_token)
         return all_orders
-
-    def get_purchase_dates(self, created_after: str, created_before: str) -> dict[str, date]:
-        self._auth.authenticate()
-        raw_orders = self._fetch_orders_in_range(created_after, created_before)
-        return self._to_purchase_date_map(raw_orders)
-
-    def _fetch_orders_in_range(self, created_after: str, created_before: str) -> list[dict]:
-        all_orders: list[dict] = []
-        url = self._orders_list_url(created_after, created_before)
-        while True:
-            payload = self._auth.request("GET", url).json().get("payload", {})
-            all_orders.extend(payload.get("Orders", []))
-            next_token = payload.get("NextToken")
-            if not next_token:
-                break
-            url = _next_page_url(f"{SP_API_BASE}/orders/v0/orders", next_token)
-        return all_orders
-
-    @staticmethod
-    def _orders_list_url(created_after: str, created_before: str) -> str:
-        return (
-            f"{SP_API_BASE}/orders/v0/orders"
-            f"?CreatedAfter={created_after}"
-            f"&CreatedBefore={created_before}"
-            f"&MarketplaceIds={MARKETPLACE_JP}"
-        )
-
-    @staticmethod
-    def _to_purchase_date_map(raw_orders: list[dict]) -> dict[str, date]:
-        purchase_dates: dict[str, date] = {}
-        for raw_order in raw_orders:
-            order_id = raw_order["AmazonOrderId"]
-            purchase_dates[order_id] = _to_jst_date(raw_order["PurchaseDate"])
-        return purchase_dates
 
     def _build_order(self, raw_order: dict) -> Order:
         order_id = raw_order["AmazonOrderId"]
