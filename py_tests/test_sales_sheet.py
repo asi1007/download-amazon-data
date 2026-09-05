@@ -1,6 +1,8 @@
 import re
+from datetime import date
 from unittest.mock import Mock
 from gspread.utils import rowcol_to_a1
+from py_src.infrastructure.sheets.label_rows import GROSS_PROFIT_ROW_LABEL, date_serial
 from py_src.infrastructure.sheets.sales_sheet import (
     SalesSheet,
     FETCH_TIME_ROW,
@@ -554,3 +556,85 @@ class TestReservedRowGuard:
         sales_ws.update_notes.assert_not_called()
         sales_ws.spreadsheet.batch_update.assert_not_called()
         sales_ws.format.assert_not_called()
+
+
+TARGET_DATE = date(2026, 9, 3)
+GROSS_PROFIT_COLUMN = 3
+
+
+def _create_mock_worksheet_for_gross_profit() -> Mock:
+    # 4行目がヘッダー（A列=ASIN, B列=商品名, C列が対象日の日付列）。
+    # 行5「ASIN行」の直後（行6）が粗利益行。B00EXAMPLF側は行8が粗利益行。
+    sales_ws = Mock()
+    sales_ws.row_values.return_value = ["ASIN", "商品名", date_serial(TARGET_DATE)]
+    col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "B00EXAMPLF", ""]
+    col_name = [
+        "", "", "", "商品名",
+        "ルーペ", GROSS_PROFIT_ROW_LABEL,
+        "ボール", GROSS_PROFIT_ROW_LABEL,
+    ]
+    sales_ws.col_values.side_effect = lambda col, **kwargs: (
+        col_a if col == 1 else col_name
+    )
+    return sales_ws
+
+
+class TestWriteGrossProfit:
+    def test_writes_estimated_profit_to_resolved_date_column(self) -> None:
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+
+        assert written == 1
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        assert requests == [
+            {"range": rowcol_to_a1(6, GROSS_PROFIT_COLUMN), "values": [[1200.0]]}
+        ]
+
+    def test_does_not_touch_cell_for_asin_missing_from_profit_dict(self) -> None:
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        written_ranges = {r["range"] for r in requests}
+        assert rowcol_to_a1(8, GROSS_PROFIT_COLUMN) not in written_ranges
+
+    def test_applies_light_yellow_background_only_to_written_cells(self) -> None:
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+
+        sales_ws.format.assert_called_once_with(
+            [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)],
+            {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}},
+        )
+
+    def test_returns_zero_and_writes_nothing_when_date_column_missing(self) -> None:
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, date(2099, 1, 1))
+
+        assert written == 0
+        sales_ws.batch_update.assert_not_called()
+        sales_ws.format.assert_not_called()
+
+    def test_skips_writing_when_asin_lands_on_reserved_row(self) -> None:
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        # ASIN行(行3)の直後、予約行である行4(=HEADER_ROW)に粗利益ラベルが来ても
+        # 書き込まれないことを確認する。
+        col_a = ["", "", "B00EXAMPLE", ""]
+        col_name = ["", "", "", GROSS_PROFIT_ROW_LABEL]
+        sales_ws.col_values.side_effect = lambda col, **kwargs: (
+            col_a if col == 1 else col_name
+        )
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        written = sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
+
+        assert written == 0
+        sales_ws.batch_update.assert_not_called()

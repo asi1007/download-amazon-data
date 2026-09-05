@@ -3,6 +3,15 @@ from datetime import datetime, date, timezone, timedelta
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
 from py_src.domain.value_objects.sales_info import SalesInfo
+from py_src.infrastructure.sheets.label_rows import (
+    ASIN_COLUMN,
+    GROSS_PROFIT_ROW_LABEL,
+    PRODUCT_NAME_HEADER,
+    bind_label_rows,
+    date_serial as label_date_serial,
+    find_column as find_label_column,
+    read_date_columns,
+)
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 JST = timezone(timedelta(hours=9))
@@ -17,6 +26,7 @@ TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千
 CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
 PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
 BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
+GROSS_PROFIT_ESTIMATE_FORMAT = {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}}
 
 
 def apply_column_formats(worksheet: Worksheet, col: int) -> None:
@@ -221,6 +231,41 @@ class SalesSheet:
             for cell in cells
         ]
         self._worksheet.spreadsheet.batch_update({"requests": requests})
+
+    @retry_on_transient_error
+    def write_gross_profit(
+        self, profit_by_asin: dict[str, float], target_date: date
+    ) -> int:
+        column = read_date_columns(self._worksheet).get(label_date_serial(target_date))
+        if column is None:
+            return 0
+
+        targets = [
+            (asin, row)
+            for asin, rows in self._gross_profit_rows().items()
+            if asin in profit_by_asin
+            for row in rows
+            if row > HEADER_ROW
+        ]
+        if not targets:
+            return 0
+
+        requests = [
+            {"range": rowcol_to_a1(row, column), "values": [[profit_by_asin[asin]]]}
+            for asin, row in targets
+        ]
+        self._worksheet.batch_update(requests, value_input_option="RAW")
+        self._worksheet.format(
+            [request["range"] for request in requests], GROSS_PROFIT_ESTIMATE_FORMAT
+        )
+        return len(requests)
+
+    def _gross_profit_rows(self) -> dict[str, list[int]]:
+        headers = self._worksheet.row_values(HEADER_ROW)
+        name_column = find_label_column(headers, PRODUCT_NAME_HEADER)
+        asin_values = self._worksheet.col_values(ASIN_COLUMN)
+        name_values = self._worksheet.col_values(name_column)
+        return bind_label_rows(asin_values, name_values, GROSS_PROFIT_ROW_LABEL)
 
     def _read_previous_prices(self, col: int, last_row: int) -> dict[int, float]:
         cell_range = f"{rowcol_to_a1(1, col)}:{rowcol_to_a1(last_row, col)}"
