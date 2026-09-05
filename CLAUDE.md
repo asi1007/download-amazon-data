@@ -83,6 +83,7 @@ SP-API credentials を更新したら Script Properties も必ず更新する
 | `weekly` | `UpdateWeeklySalesUseCase` | 週次売上集計 |
 | `inventory` | `UpdateInventoryStatusUseCase` | FBA在庫を「納品状況」へ書き出し（GAS版の移植、2026-06-17 追加）|
 | `ads` | `UpdateAdSalesUseCase` | 広告経由の売上個数と広告費を「売上/日」のラベル行へ書く（直近14日を毎日上書き）|
+| `finances` | `UpdateActualGrossProfitUseCase` | 粗利益を実測手数料で上書きし、見積との差を「手数料乖離」へ出す（直近14日）|
 
 実行例:
 ```bash
@@ -201,6 +202,83 @@ ASIN行のどれを先に積むかという**順序には依存しない**（v0.
   巻き添えで失われる
 - 数値書式は粗利益・広告費とも `#,##0.0,"K"`（1,240 → `1.2K`）
 
+## 粗利益の実測（v0.31.0〜）
+
+`main.py finances`（毎日 3:00、`com.automation.download-amazon-data-finances`）が
+直近14日の粗利益を実測手数料で上書きし、見積との差を「手数料乖離」シートへ出す。
+
+### なぜ要るか
+
+見積の手数料は**特定の商品で大きく外れる**。2026-08-20〜08-27 の実測（51商品・5,904個）で、
+合計は **+3.4%（実測のほうが高い＝粗利益が過大）**、商品単位では **+53% 〜 −36%**。
+51商品のうち5%以上ずれたのが17商品、10%以上が8商品で、3商品は誤差ゼロだった。
+「全体が数%ずれる」のではなく、サイズ区分の変更などで**個々の商品の見積が古くなっている**。
+
+### 未出荷分は見積のまま
+
+粗利益の3項は数える母集団が違う。売上は**注文**ベース、実測手数料は**出荷**ベース。
+未出荷の注文には手数料イベントが無いので、実測だけで引くと手数料が過小になり
+**利益が過大に出る** — しかも「確定した数字」に見えるタイミングで。
+
+```
+粗利益 = 売上 − 実測手数料 − 返金された売上
+        − (販売手数料 + FBA手数料) × 未出荷個数     ← 見積
+        − 原価 × 販売個数
+```
+
+- **売上は orderMetrics に統一する。** Finances の `Principal` と orderMetrics の
+  `totalSales` は税の扱いが違うため、混ぜると金額の定義まで食い違う。実測に
+  置き換えるのは**手数料の項だけ**
+- **未出荷個数は 0 と販売個数の間に収める。** 返金は `quantity` を負にするため、
+  素朴な引き算だと販売個数より多い未出荷が出る
+- 原価は実測できないので、出荷済み・未出荷とも売上/日 の `原価` 列を使う
+
+### 黄色は「まだ動く」を表す
+
+- **その日その商品の全個数に実測が付いたときだけ黄色を外す。** 白 = 確定
+- **売れた日に実測が1件も無いのを白にしてはいけない。** 取得できていないだけ
+  かもしれず、黄色のまま残すほうが正直。売れていない日は確定させるものが無いので白
+- 黄色を外すのは `repeatCell` + `fields: userEnteredFormat.backgroundColor`。
+  `#,##0.0,"K"` の数値書式は残る
+
+### 差の抽出
+
+上書きするだけでは**見積は永久に古いまま**になる。差を見て人が直せるようにする。
+
+- **「手数料乖離」シート** — 毎回上書き。ASIN・商品名・個数・見積/個・実測/個・差・差% を
+  `|差|` の降順で並べる。どの商品の手数料列を直すべきかがここで分かる
+- **粗利益セルのノート** — 上書き前の見積を `見積 3,900 / 実測 3,750` の形で残す。
+  乖離シートは直近14日しか持たないので、日ごとの履歴はここに残る
+
+### 実測イベントの読み方（実物で確認済み）
+
+| | 出荷 | 返金 |
+|---|---|---|
+| リスト | `ShipmentEventList` | `RefundEventList` |
+| 明細 | `ShipmentItemList` | `ShipmentItemAdjustmentList` |
+| 手数料 | `ItemFeeList`（負） | `ItemFeeAdjustmentList`（戻しは正・返金手数料は負が混在） |
+| 売上 | `ItemChargeList` の `Principal` | `ItemChargeAdjustmentList` の `Principal`（負） |
+| 個数 | `QuantityShipped` | `QuantityShipped` — **返金でも正の値**。符号は自分で反転する |
+
+2026-08-20〜08-27 の実績で出荷 5,156件・返金 41件（0.8%）。
+
+- **`PostedBefore` に未来を渡すと 400 になる。** 窓の開始から「今」までを取る
+- **`NextToken` は `PostedAfter`/`CreatedAfter` と排他。** 併記すると2ページ目だけが
+  本番で落ちる（ユニットテストは transport をモックするので気づけない）
+- **実測が1件も取れなければ例外を投げてシートに触らない**（`EmptyFinancesResultError`）。
+  ロールが外れている・API障害のときに見積を壊してはいけない
+- 実測は出荷日、シートの列は注文日。`getOrders` で注文ID→注文日を作ってから足す。
+  窓の外で注文された分は書き換える列が無いので落とす
+- Finances は `SellerSKU` しか返さないので、売上/日 の `SKU` 列で ASIN に引き直す。
+  同じ ASIN の2行に別の SKU が振られていることがあるため **SKU を鍵にする**
+
+### やっていないこと
+
+- 14日より前の遡及。返金や調整が後から来ても反映しない
+- 原価の実測化。仕入値は SP-API から取れない
+- 見積そのものの自動更新。**乖離シートを見て人が直す**（自動で書き換えると
+  どの商品の見積が壊れているのか分からなくなる）
+
 ## 広告経由の売上個数（v0.15.0〜）
 
 `main.py ads` が Amazon Ads の `spAdvertisedProduct` レポート（DAILY）から
@@ -246,7 +324,8 @@ ASIN行のどれを先に積むかという**順序には依存しない**（v0.
 | `com.automation.download-amazon-data.plist` | `main.py`（リアルタイム売上） | 30分ごと |
 | `com.automation.download-amazon-data-daily.plist` | `main.py daily`（昨日の売上＋競合価格） | 毎日 1:00 |
 | `com.automation.download-amazon-data-today.plist` | `main.py today`（本日の売上を上書き、価格は書かない） | 毎時0分 |
-| `com.automation.download-amazon-data-ads.plist` | `main.py ads`（広告経由の売上個数） | 毎日 2:00 |
+| `com.automation.download-amazon-data-ads.plist` | `main.py ads`（広告経由の売上個数と広告費） | 毎日 2:00 |
+| `com.automation.download-amazon-data-finances.plist` | `main.py finances`（粗利益を実測で上書き＋手数料乖離） | 毎日 3:00 |
 | `com.automation.download-amazon-data-inventory.plist` | `main.py inventory` | 毎日 23:00 |
 | `com.automation.update-weekly-sales.plist` | `main.py weekly` | 月曜 9:00 |
 

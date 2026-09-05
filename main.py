@@ -9,6 +9,8 @@ from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
 from py_src.infrastructure.api.sp_api_inventory_repository import SpApiInventoryRepository
+from py_src.infrastructure.api.finances_repository import FinancesRepository
+from py_src.infrastructure.api.orders_repository import OrdersRepository
 from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
@@ -18,6 +20,8 @@ from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
 from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
+from py_src.infrastructure.sheets.product_index_reader import ProductIndexReader
+from py_src.infrastructure.sheets.fee_gap_sheet import FeeGapSheet
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
@@ -26,6 +30,7 @@ from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase
 from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
 from py_src.usecases.update_inventory_status import UpdateInventoryStatusUseCase
 from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
+from py_src.usecases.update_actual_gross_profit import UpdateActualGrossProfitUseCase
 
 ADS_ENV_PATH = Path(__file__).resolve().parents[1] / "dwld-ad-data" / ".env"
 
@@ -142,6 +147,40 @@ def update_inventory_status() -> None:
     print(f"納品状況シートに {count} 件書き込みました")
 
 
+def update_actual_gross_profit() -> None:
+    load_dotenv()
+    authenticator = _create_authenticator()
+    spreadsheet = _open_spreadsheet()
+    sales_ws = spreadsheet.worksheet("売上/日")
+    usecase = UpdateActualGrossProfitUseCase(
+        sales_sheet=SalesSheet(sales_worksheet=sales_ws),
+        sales_repository=SpApiSalesRepository(authenticator=authenticator),
+        orders_repository=OrdersRepository(authenticator=authenticator),
+        finances_repository=FinancesRepository(authenticator=authenticator),
+        index_reader=ProductIndexReader(sales_ws),
+        fee_gap_sheet=FeeGapSheet(spreadsheet),
+    )
+    result = usecase.execute()
+    written = result.write_result
+    print(
+        f"粗利益を実測で {written.cells_written} セル上書きし、"
+        f"{written.cells_cleared} セルを確定（黄色を解除）しました"
+    )
+    print(f"手数料乖離シートに {result.fee_gap_count} 件書き込みました")
+    if written.skipped_dates:
+        print(
+            f"日付列が無くスキップ（{len(written.skipped_dates)}日）: "
+            f"{', '.join(written.skipped_dates)}"
+        )
+    if written.asins_without_row:
+        print(
+            f"粗利益の行が無い ASIN（{len(written.asins_without_row)}件）: "
+            f"{', '.join(written.asins_without_row)}"
+        )
+    if result.unknown_sku_count:
+        print(f"売上/日 に無い SKU を {result.unknown_sku_count} 件除外しました")
+
+
 def update_ad_sales() -> None:
     load_dotenv()
     credentials = load_ads_credentials(ADS_ENV_PATH)
@@ -178,5 +217,7 @@ if __name__ == "__main__":
         update_inventory_status()
     elif len(sys.argv) > 1 and sys.argv[1] == "ads":
         update_ad_sales()
+    elif len(sys.argv) > 1 and sys.argv[1] == "finances":
+        update_actual_gross_profit()
     else:
         main()
