@@ -43,14 +43,19 @@ class SpApiSalesRepository:
         # 1 ASIN 1リクエストで期間全体を Day 粒度で取る。失敗した ASIN は結果に
         # 入れない（欠測を 0 と書くと販売0件と見分けがつかない）
         by_asin: dict[str, dict[date, SalesInfo]] = {}
+        failed_asins: list[str] = []
         for i, asin in enumerate(asin_list):
             if i > 0:
                 time.sleep(REQUEST_INTERVAL_SECONDS)
             try:
                 response = self._auth.request("GET", self._metrics_url(asin, start_date, end_date))
             except requests.exceptions.RequestException:
+                failed_asins.append(asin)
                 continue
             by_asin[asin] = self._parse_sales_by_date(response.json())
+        # 個別の失敗はセルを空のまま残すだけだが、全滅は設定ミスや障害。
+        # 黙って {} を返すと呼び出し元が 0 件で正常終了してしまう
+        self._reject_excessive_failures(failed_asins, len(asin_list))
         return by_asin
 
     @staticmethod

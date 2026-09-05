@@ -19,6 +19,10 @@ from py_src.usecases.update_actual_gross_profit import (
 )
 
 JST = timezone(timedelta(hours=9))
+
+
+def _parse_utc(stamp: str) -> datetime:
+    return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 ORDER_DATE = date(2026, 9, 1)
 INDEX = ProductIndex(
     costs={"B00EXAMPLE": UnitCosts(selling_fee=100.0, fba_fee=200.0, cost=400.0)},
@@ -95,11 +99,12 @@ class TestUpdateActualGrossProfit:
 
         usecase.execute()
 
+        # interval は UTC の Z 形式。+09:00 形式だと orderMetrics が何も返さない
         start, end = sales_repo.get_sales_by_date.call_args[0][1:3]
-        start_date = datetime.fromisoformat(start).date()
-        end_date = datetime.fromisoformat(end).date()
-        today = datetime.now(JST).date()
-        assert end_date == today
+        assert start.endswith("Z") and end.endswith("Z")
+        start_date = _parse_utc(start).astimezone(JST).date()
+        end_date = _parse_utc(end).astimezone(JST).date()
+        assert end_date == datetime.now(JST).date()
         assert (end_date - start_date).days == 14
 
     def test_counts_skus_that_are_not_on_the_sheet(self) -> None:

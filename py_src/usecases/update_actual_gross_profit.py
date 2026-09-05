@@ -68,8 +68,11 @@ class UpdateActualGrossProfitUseCase:
         settled, unknown_sku_count = aggregate_settled(
             records, purchase_dates, index.sku_to_asin
         )
+        # interval は UTC の Z 形式で渡す。+09:00 形式だと orderMetrics が
+        # 何も返さず、全 ASIN が空のまま無音で 0 セルになる（実際にそうなった）。
+        # 日付の切れ目は granularityTimeZone=Asia/Tokyo が面倒を見る
         sales_by_asin = self._sales_repo.get_sales_by_date(
-            self._sheet.get_asin_list(), _to_jst_iso(start), _to_jst_iso(end)
+            self._sheet.get_asin_list(), _date_to_utc_iso(start), _date_to_utc_iso(end)
         )
         cells_by_date = build_profit_cells(sales_by_asin, settled, index.costs)
         write_result = self._sheet.write_actual_gross_profit(cells_by_date)
@@ -94,10 +97,6 @@ class UpdateActualGrossProfitUseCase:
     def _window(today: date) -> tuple[date, date]:
         # 当日は注文が確定しておらず、実測もほとんど付かない。前日までを対象にする
         return today - timedelta(days=WINDOW_DAYS), today
-
-
-def _to_jst_iso(target: date) -> str:
-    return datetime(target.year, target.month, target.day, tzinfo=JST).isoformat()
 
 
 def _date_to_utc_iso(target: date) -> str:
