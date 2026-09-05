@@ -78,11 +78,11 @@ SP-API credentials を更新したら Script Properties も必ず更新する
 | サブコマンド | usecase | 用途 |
 |---|---|---|
 | なし（デフォルト） | `UpdateRealtimeSalesUseCase` | 「売上/今」を更新 |
-| `daily` | `UpdateDailySalesUseCase` | 昨日の売上を「売上/日」へ追記＋競合価格を書く |
-| `today` | `UpdateTodaySalesUseCase` | 本日の売上を「売上/日」へ毎時0分に上書き（**価格は書かない**、列が無ければ作る）|
+| `daily` | `UpdateDailySalesUseCase` | 昨日の売上を「売上/日」へ追記＋競合価格＋粗利益の見積を書く |
+| `today` | `UpdateTodaySalesUseCase` | 本日の売上と粗利益の見積を「売上/日」へ毎時0分に上書き（**価格は書かない**、列が無ければ作る）|
 | `weekly` | `UpdateWeeklySalesUseCase` | 週次売上集計 |
 | `inventory` | `UpdateInventoryStatusUseCase` | FBA在庫を「納品状況」へ書き出し（GAS版の移植、2026-06-17 追加）|
-| `ads` | `UpdateAdSalesUseCase` | 広告経由の売上個数を「売上/日」の広告行へ書く（直近14日を毎日上書き）|
+| `ads` | `UpdateAdSalesUseCase` | 広告経由の売上個数と広告費を「売上/日」のラベル行へ書く（直近14日を毎日上書き）|
 
 実行例:
 ```bash
@@ -171,13 +171,41 @@ ASIN行のどれを先に積むかという**順序には依存しない**（v0.
 
 前日のノートが無い日（実行が落ちた日）は比較せず色を付けない。欠測を「変化なし」と描き分けられなくなるため。
 
+## 「売上/日」は ASIN 1件につき4行（v0.27.0〜）
+
+各 ASIN 行の直下に**ラベル行が3本**並ぶ。A列は空、商品名列にラベル名が入り、
+背景色は**行全体ではなく A列〜商品名列のみ**を薄いグレーで塗る。
+
+| # | ラベル | 中身 | 書くのは |
+|---|---|---|---|
+| 0 | （ASIN行） | その日の売上個数。ノートに価格 | `main.py daily` / `today` |
+| 1 | `広告経由` | 広告経由の売上個数 | `main.py ads` |
+| 2 | `粗利益` | 売上 −（販売手数料 + FBA手数料 + 原価）× 個数 | `main.py daily` / `today` |
+| 3 | `広告費` | その日の広告費 | `main.py ads` |
+
+2026-09-03 時点で **77商品 × 4行 + 見出し8行 = 332行**。
+
+- **ラベルの順序と本数は3箇所で一致していなければならない。** `label_rows.ROW_LABELS_IN_ORDER`、
+  `insert_ad_rows.py`（既存行の移行）、そして**別リポジトリの**
+  `marketar/listing-creator/src/usecases/sales_sheet_row.py` の `LABEL_ROWS_IN_ORDER`
+  （新商品の行を挿入する側）。import で保証できないので、それぞれのテストで順序を固定している。
+  ここがずれると**新商品だけ永久に空欄**になる（実際に2行挿入のまま放置されていた）
+- **粗利益・広告費が1行も書けなかったら例外を投げる。** launchd の失敗通知は終了コードでしか
+  鳴らないため、0件で正常終了すると Slack にも daily note にも出ず何週間も気づけない
+  （`GrossProfitRowsNotFoundError` / `AdCostRowsNotFoundError`）。一部の ASIN だけ欠けている
+  場合は書ける分を書き、欠けた ASIN を結果に載せて標準出力へ出す
+- **粗利益は黄色の背景で「見積」を表す。** 手数料はシートの列（SP-API の手数料見積）から取る。
+  実測（Finances API）への置き換えはまだ実装していない
+- **粗利益は `write_prices` の後に書く。** `UnitCostReader` は原価列のヘッダー名で列を引くため、
+  ヘッダーが変わると `ValueError` で落ちる。先に置くとその日の価格列と値下げ/値上げの色まで
+  巻き添えで失われる
+- 数値書式は粗利益・広告費とも `#,##0.0,"K"`（1,240 → `1.2K`）
+
 ## 広告経由の売上個数（v0.15.0〜）
 
-「売上/日」は各 ASIN 行の直下に**広告行**を1本持つ（A列は空、商品名列に「広告経由」。
-背景色は**行全体ではなく A列〜商品名列のみ**を薄いグレーで塗る（`insert_ad_rows.py` /
-`write_sales_sheet.py` とも同じ範囲）。2026-09-03 時点で **77行**）。
 `main.py ads` が Amazon Ads の `spAdvertisedProduct` レポート（DAILY）から
-`unitsSoldSameSku14d` を取り、この行へ書く。資格情報の読み込みは `load_ads_credentials(path)`
+`unitsSoldSameSku14d` と `cost` を取り、`広告経由` 行と `広告費` 行へ書く。
+資格情報の読み込みは `load_ads_credentials(path)`
 （`py_src/infrastructure/api/ads_credentials_loader.py`）。
 
 - **日付列は作らない。** 列を作るのは `main.py daily` の責務で、広告ジョブは既にある列に
@@ -190,9 +218,10 @@ ASIN行のどれを先に積むかという**順序には依存しない**（v0.
   日次売上は SP-API だけで4分かかり10%失敗で中断する設計で、ここに Ads のレポート生成待ちを
   足すと片方の失敗が両方を巻き込む
 - 資格情報は `data-engineer/dwld-ad-data/.env` を参照する（SP-API とは**別の** refresh_token）
-- 広告行は「A列が空 かつ 商品名列が『広告経由』かつ 直前に ASIN 行がある」で特定する。
+- ラベル行は「A列が空 かつ 商品名列がラベル名 かつ 直前に ASIN 行がある」で特定する。
   位置だけに頼っていないので、空行が紛れ込んでも誤って書かない
-- 行を足すのは `insert_ad_rows.py`（冪等。`--dry-run` あり）
+- **既存行**にラベル行を足すのは `insert_ad_rows.py`（冪等。`--dry-run` あり）。
+  **新商品**は `marketar/listing-creator/write_sales_sheet.py` が4行まとめて挿入する
 - **広告経由の個数は同じ日の売上個数を超えないのが原則だが、少数は超えてよい。**
   売上個数は「注文日」、広告経由の個数は「クリック日」（14日以内の購入を加算）に紐づくため、
   クリックと購入が別日にまたがると超えることがある。実データ（77 ASIN × 14日 = 1078セル）で
@@ -202,7 +231,7 @@ ASIN行のどれを先に積むかという**順序には依存しない**（v0.
   翌日以降も自己修復しない）。`UpdateAdSalesUseCase` は指定範囲全体で1行も返らなかった場合
   `EmptyAdsReportError` を投げてシートに触らない。範囲内のどこか1件でも実データがあれば
   （値が0の行を含めて）書き込みは進む
-- **日付列が無い日はスキップし、スキップした日数を最後に出力する。** `write_ad_units` は書き込みセル数に加えて
+- **日付列が無い日はスキップし、スキップした日数を最後に出力する。** `write_ad_metrics` は書き込みセル数に加えて
   スキップした日付の一覧を返し、`main.py ads` とバックフィルの両方がコンソールへ出す。
   01:00 の売上ジョブ（日付列を作る）が落ちた日は、02:00 の広告ジョブがその日をスキップしたことが
   ここで分かる
