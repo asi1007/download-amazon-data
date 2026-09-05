@@ -1,6 +1,7 @@
 import re
 from datetime import date
 from unittest.mock import Mock
+from gspread import Worksheet
 from gspread.utils import rowcol_to_a1
 from py_src.infrastructure.sheets.label_rows import GROSS_PROFIT_ROW_LABEL, date_serial
 from py_src.infrastructure.sheets.sales_sheet import (
@@ -565,7 +566,7 @@ GROSS_PROFIT_COLUMN = 3
 def _create_mock_worksheet_for_gross_profit() -> Mock:
     # 4行目がヘッダー（A列=ASIN, B列=商品名, C列が対象日の日付列）。
     # 行5「ASIN行」の直後（行6）が粗利益行。B00EXAMPLF側は行8が粗利益行。
-    sales_ws = Mock()
+    sales_ws = Mock(spec=Worksheet)
     sales_ws.row_values.return_value = ["ASIN", "商品名", date_serial(TARGET_DATE)]
     col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "B00EXAMPLF", ""]
     col_name = [

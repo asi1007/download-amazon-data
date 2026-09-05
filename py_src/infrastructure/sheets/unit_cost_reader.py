@@ -48,4 +48,9 @@ class UnitCostReader:
         if len(row) < column:
             return None
         cleaned = row[column - 1].replace("¥", "").replace(",", "").strip()
-        return float(cleaned) if cleaned else None
+        if not cleaned:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None

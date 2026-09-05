@@ -45,3 +45,42 @@ class TestUnitCostReader:
         ]
 
         assert UnitCostReader(worksheet).read()["B00EXAMPLE"].selling_fee == 1100.0
+
+
+class TestMalformedCells:
+    def test_ref_error_cell_becomes_none_without_raising(self) -> None:
+        worksheet = _worksheet()
+        worksheet.get.return_value = [
+            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "100", "300", "#REF!"],
+        ]
+
+        costs = UnitCostReader(worksheet).read()
+
+        assert costs["B00EXAMPLE"].cost is None
+
+    def test_div_error_cell_becomes_none_without_raising(self) -> None:
+        worksheet = _worksheet()
+        worksheet.get.return_value = [
+            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "#DIV/0!", "300", "200"],
+        ]
+
+        costs = UnitCostReader(worksheet).read()
+
+        assert costs["B00EXAMPLE"].selling_fee is None
+
+    def test_other_asins_still_read_correctly_when_one_row_is_malformed(self) -> None:
+        worksheet = _worksheet()
+        worksheet.get.return_value = [
+            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "100", "300", "#REF!"],
+            ["B00EXAMPLF", "ボール", "50", "250", "180"],
+        ]
+
+        costs = UnitCostReader(worksheet).read()
+
+        assert costs["B00EXAMPLE"].cost is None
+        assert costs["B00EXAMPLF"] == UnitCosts(
+            selling_fee=50.0, fba_fee=250.0, cost=180.0
+        )
