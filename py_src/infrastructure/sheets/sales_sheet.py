@@ -2,6 +2,10 @@ from __future__ import annotations
 from datetime import datetime, date, timezone, timedelta
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1, a1_range_to_grid_range, ValueRenderOption
+from py_src.domain.value_objects.actual_profit_cell import (
+    ActualProfitCell,
+    ActualProfitWriteResult,
+)
 from py_src.domain.value_objects.gross_profit_write_result import (
     GrossProfitRowsNotFoundError,
     GrossProfitWriteResult,
@@ -287,6 +291,52 @@ class SalesSheet:
             cells_written=len(requests), asins_without_row=asins_without_row
         )
 
+    @retry_on_transient_error
+    def write_actual_gross_profit(
+        self, cells_by_date: dict[date, list[ActualProfitCell]]
+    ) -> ActualProfitWriteResult:
+        columns = read_date_columns(self._worksheet)
+        rows_by_asin = self._gross_profit_rows()
+
+        requests: list[dict] = []
+        notes: dict[str, str] = {}
+        settled_cells: list[str] = []
+        skipped_dates: list[str] = []
+        missing_asins: set[str] = set()
+
+        for target_date, cells in cells_by_date.items():
+            column = columns.get(label_date_serial(target_date))
+            if column is None:
+                skipped_dates.append(target_date.isoformat())
+                continue
+            for cell in cells:
+                rows = [row for row in rows_by_asin.get(cell.asin, []) if row > HEADER_ROW]
+                if not rows:
+                    missing_asins.add(cell.asin)
+                    continue
+                for row in rows:
+                    a1 = rowcol_to_a1(row, column)
+                    requests.append({"range": a1, "values": [[cell.profit]]})
+                    notes[a1] = _estimate_note(cell)
+                    if cell.fully_settled:
+                        settled_cells.append(a1)
+
+        if requests:
+            # batch_update は渡した dict の "range" を in-place で書き換えるため、
+            # ノートと背景色の対象は先に別のリストへ控えてある
+            self._worksheet.batch_update(requests, value_input_option="RAW")
+            self._worksheet.update_notes(notes)
+        if settled_cells:
+            # 黄色は「まだ動く」を表す。全個数に実測が付いた日だけ外す。
+            # 数値書式は userEnteredFormat.backgroundColor だけを消すので残る
+            self._clear_backgrounds(settled_cells)
+        return ActualProfitWriteResult(
+            cells_written=len(requests),
+            cells_cleared=len(settled_cells),
+            skipped_dates=tuple(skipped_dates),
+            asins_without_row=tuple(sorted(missing_asins)),
+        )
+
     def _gross_profit_rows(self) -> dict[str, list[int]]:
         headers = self._worksheet.row_values(HEADER_ROW)
         name_column = find_label_column(headers, PRODUCT_NAME_HEADER)
@@ -307,3 +357,7 @@ class SalesSheet:
             except ValueError:
                 continue
         return result
+
+
+def _estimate_note(cell: ActualProfitCell) -> str:
+    return f"見積 {cell.estimate:,.0f} / 実測 {cell.profit:,.0f}"

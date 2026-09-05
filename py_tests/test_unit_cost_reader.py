@@ -8,12 +8,12 @@ from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
 def _worksheet() -> Mock:
     worksheet = Mock(spec=Worksheet)
-    worksheet.row_values.return_value = ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"]
+    worksheet.row_values.return_value = ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"]
     worksheet.get.return_value = [
-        ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
-        ["B00EXAMPLE", "ルーペ", "100", "300", "200"],
-        ["", "広告経由", "", "", ""],
-        ["B00EXAMPLF", "ボール", "", "250", "180"],
+        ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+        ["B00EXAMPLE", "ルーペ", "SKU-A", "100", "300", "200"],
+        ["", "広告経由", "", "", "", ""],
+        ["B00EXAMPLF", "ボール", "SKU-B", "", "250", "180"],
     ]
     return worksheet
 
@@ -40,8 +40,8 @@ class TestUnitCostReader:
     def test_strips_currency_formatting(self) -> None:
         worksheet = _worksheet()
         worksheet.get.return_value = [
-            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
-            ["B00EXAMPLE", "ルーペ", "¥1,100", "300", "200"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "SKU-A", "¥1,100", "300", "200"],
         ]
 
         assert UnitCostReader(worksheet).read()["B00EXAMPLE"].selling_fee == 1100.0
@@ -51,8 +51,8 @@ class TestMalformedCells:
     def test_ref_error_cell_becomes_none_without_raising(self) -> None:
         worksheet = _worksheet()
         worksheet.get.return_value = [
-            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
-            ["B00EXAMPLE", "ルーペ", "100", "300", "#REF!"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "SKU-A", "100", "300", "#REF!"],
         ]
 
         costs = UnitCostReader(worksheet).read()
@@ -62,8 +62,8 @@ class TestMalformedCells:
     def test_div_error_cell_becomes_none_without_raising(self) -> None:
         worksheet = _worksheet()
         worksheet.get.return_value = [
-            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
-            ["B00EXAMPLE", "ルーペ", "#DIV/0!", "300", "200"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "SKU-A", "#DIV/0!", "300", "200"],
         ]
 
         costs = UnitCostReader(worksheet).read()
@@ -73,9 +73,9 @@ class TestMalformedCells:
     def test_other_asins_still_read_correctly_when_one_row_is_malformed(self) -> None:
         worksheet = _worksheet()
         worksheet.get.return_value = [
-            ["ASIN", "商品名", "販売手数料", "FBA手数料", "原価"],
-            ["B00EXAMPLE", "ルーペ", "100", "300", "#REF!"],
-            ["B00EXAMPLF", "ボール", "50", "250", "180"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B00EXAMPLE", "ルーペ", "SKU-A", "100", "300", "#REF!"],
+            ["B00EXAMPLF", "ボール", "SKU-B", "50", "250", "180"],
         ]
 
         costs = UnitCostReader(worksheet).read()
@@ -91,11 +91,11 @@ class TestDuplicateAsinRows:
         # 同じ ASIN の2行のうち後の行が空でも、揃っている行の値を使う。
         # 実データ (B0FBSCPJJH) がこの形で、粗利益が丸ごと書かれていなかった
         worksheet = Mock(spec=Worksheet)
-        worksheet.row_values.return_value = ["ASIN", "販売手数料", "FBA手数料", "原価"]
+        worksheet.row_values.return_value = ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"]
         worksheet.get.return_value = [
-            ["ASIN", "販売手数料", "FBA手数料", "原価"],
-            ["B0FBSCPJJH", "38.5", "252", "168.58"],
-            ["B0FBSCPJJH", "", "", "168.58"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B0FBSCPJJH", "ボールネット", "SKU-NET", "38.5", "252", "168.58"],
+            ["B0FBSCPJJH", "ボールバッグ", "SKU-BAG", "", "", "168.58"],
         ]
 
         costs = UnitCostReader(worksheet).read()
@@ -104,11 +104,11 @@ class TestDuplicateAsinRows:
 
     def test_falls_back_to_a_later_complete_row_when_the_first_is_empty(self) -> None:
         worksheet = Mock(spec=Worksheet)
-        worksheet.row_values.return_value = ["ASIN", "販売手数料", "FBA手数料", "原価"]
+        worksheet.row_values.return_value = ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"]
         worksheet.get.return_value = [
-            ["ASIN", "販売手数料", "FBA手数料", "原価"],
-            ["B0F5P3RM78", "", "", ""],
-            ["B0F5P3RM78", "524.7", "675", "739.29"],
+            ["ASIN", "商品名", "SKU", "販売手数料", "FBA手数料", "原価"],
+            ["B0F5P3RM78", "フォトフレーム", "SKU-F1", "", "", ""],
+            ["B0F5P3RM78", "フォトフレーム", "SKU-F2", "524.7", "675", "739.29"],
         ]
 
         costs = UnitCostReader(worksheet).read()
