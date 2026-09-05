@@ -246,7 +246,7 @@ class SalesSheet:
 
     @retry_on_transient_error
     def write_gross_profit(
-        self, profit_by_asin: dict[str, float], target_date: date
+        self, profit_by_asin: dict[str, float | None], target_date: date
     ) -> GrossProfitWriteResult:
         if not profit_by_asin:
             return GrossProfitWriteResult()
@@ -282,11 +282,17 @@ class SalesSheet:
         # (write_prices の written_cells と同じ回避)。
         written_cells = [rowcol_to_a1(row, column) for _, row in targets]
         requests = [
-            {"range": cell, "values": [[profit_by_asin[asin]]]}
+            {"range": cell, "values": [[_cell_value(profit_by_asin[asin])]]}
             for cell, (asin, _) in zip(written_cells, targets)
         ]
+        estimated_cells = [
+            cell
+            for cell, (asin, _) in zip(written_cells, targets)
+            if profit_by_asin[asin] is not None
+        ]
         self._worksheet.batch_update(requests, value_input_option="RAW")
-        self._worksheet.format(written_cells, GROSS_PROFIT_ESTIMATE_FORMAT)
+        if estimated_cells:
+            self._worksheet.format(estimated_cells, GROSS_PROFIT_ESTIMATE_FORMAT)
         return GrossProfitWriteResult(
             cells_written=len(requests), asins_without_row=asins_without_row
         )
@@ -361,3 +367,7 @@ class SalesSheet:
 
 def _estimate_note(cell: ActualProfitCell) -> str:
     return f"見積 {cell.estimate:,.0f} / 実測 {cell.profit:,.0f}"
+
+
+def _cell_value(profit: float | None) -> float | str:
+    return "" if profit is None else profit

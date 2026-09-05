@@ -86,9 +86,8 @@ def _write_gross_profit(
     target_date: date,
 ) -> GrossProfitWriteResult:
     profits = {
-        asin: profit
+        asin: estimate_gross_profit(sales, costs.get(asin, UnitCosts()))
         for asin, sales in asin_sales.items()
-        if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
     }
     return sales_sheet.write_gross_profit(profits, target_date)
 

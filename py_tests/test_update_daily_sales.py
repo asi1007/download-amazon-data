@@ -112,7 +112,7 @@ class TestUpdateDailySalesUseCase:
         written = sales_sheet.write_gross_profit.call_args[0][0]
         assert written == {"B00EXAMPLE": 1200.0}
 
-    def test_asin_with_missing_costs_is_absent_from_the_write(self) -> None:
+    def test_asin_with_missing_costs_is_blanked_rather_than_left_stale(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
         sales_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
         cost_reader = Mock(spec=UnitCostReader)
@@ -132,7 +132,8 @@ class TestUpdateDailySalesUseCase:
 
         usecase.execute()
 
-        assert sales_sheet.write_gross_profit.call_args[0][0] == {}
+        # 書かずに飛ばすと前回の見積が黄色のまま残り、最新の数字に見える
+        assert sales_sheet.write_gross_profit.call_args[0][0] == {"B00EXAMPLE": None}
 
     def test_units_are_written_before_profit(self) -> None:
         # 粗利益は売上個数と同じ列に書くので、列を解決する write_sales_nums が先

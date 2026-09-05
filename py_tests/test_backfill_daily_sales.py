@@ -73,7 +73,7 @@ class TestBackfillOneDay:
             ]
         )
 
-    def test_does_not_write_gross_profit_when_cost_is_missing(self) -> None:
+    def test_blanks_gross_profit_when_cost_is_missing(self) -> None:
         sales_sheet = Mock(spec=SalesSheet)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
@@ -84,7 +84,9 @@ class TestBackfillOneDay:
 
         _backfill_one_day(sales_sheet, ["B00EXAMPLE"], sales_repository, "2026-06-18", {})
 
-        sales_sheet.write_gross_profit.assert_called_once_with({}, date(2026, 6, 18))
+        sales_sheet.write_gross_profit.assert_called_once_with(
+            {"B00EXAMPLE": None}, date(2026, 6, 18)
+        )
 
 
 class TestMainReadsCostsOnce:

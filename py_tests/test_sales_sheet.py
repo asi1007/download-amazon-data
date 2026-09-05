@@ -704,3 +704,16 @@ class TestWriteGrossProfit:
             sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
         sales_ws.batch_update.assert_not_called()
+
+    def test_none_profit_blanks_the_cell_and_gets_no_yellow(self) -> None:
+        # 原価が #REF! になった等で計算できなくなった日は、前回の見積を
+        # 残さず空にする。黄色のまま残ると最新の数字のように見える
+        sales_ws = _create_mock_worksheet_for_gross_profit()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+
+        result = sheet.write_gross_profit({"B00EXAMPLE": None}, TARGET_DATE)
+
+        assert result.cells_written == 1
+        requests = sales_ws.batch_update.call_args_list[0][0][0]
+        assert requests[0]["values"] == [[""]]
+        sales_ws.format.assert_not_called()

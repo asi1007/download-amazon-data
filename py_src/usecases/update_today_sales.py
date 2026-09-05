@@ -63,10 +63,11 @@ class UpdateTodaySalesUseCase:
         self, asin_sales: dict[str, SalesInfo], target_date: date
     ) -> GrossProfitWriteResult:
         costs = self._cost_reader.read()
+        # 原価や手数料が欠けた ASIN は「書かない」ではなく「空にする」。
+        # 前回の見積が残ると、黄色のまま最新の数字のように見えてしまう
         profits = {
-            asin: profit
+            asin: estimate_gross_profit(sales, costs.get(asin, UnitCosts()))
             for asin, sales in asin_sales.items()
-            if (profit := estimate_gross_profit(sales, costs.get(asin, UnitCosts()))) is not None
         }
         return self._sheet.write_gross_profit(profits, target_date)
 
