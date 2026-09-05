@@ -60,7 +60,14 @@ def read_date_columns(worksheet: Worksheet) -> dict[int, int]:
 
 
 def find_column(headers: list[str], name: str) -> int:
+    # 売上/日 のヘッダーは改行入り（'ライバル\nURL'）と大小文字の混在
+    # （'SKU' と 'fnsku'）がある。素朴な完全一致だと黙って落ちる
+    target = _normalize_header(name)
     for index, value in enumerate(headers, start=1):
-        if str(value).strip() == name:
+        if _normalize_header(value) == target:
             return index
     raise ValueError(f"ヘッダーに '{name}' が見つかりません")
+
+
+def _normalize_header(value: object) -> str:
+    return str(value).replace("\n", "").strip().casefold()

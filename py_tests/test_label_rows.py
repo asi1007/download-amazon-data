@@ -85,3 +85,19 @@ class TestFindColumn:
             assert "SKU" in str(error)
         else:
             raise AssertionError("ValueError が上がらなかった")
+
+
+class TestFindColumnNormalization:
+    def test_matches_header_with_an_embedded_newline(self) -> None:
+        assert find_column(["ASIN", "ライバル\nURL"], "ライバルURL") == 2
+
+    def test_matches_regardless_of_case(self) -> None:
+        # 売上/日 は 'SKU'(大文字) と 'fnsku'(小文字) が同居している
+        assert find_column(["ASIN", "SKU"], "sku") == 2
+        assert find_column(["ASIN", "fnsku"], "FNSKU") == 2
+
+    def test_still_raises_when_absent(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError):
+            find_column(["ASIN"], "原価")

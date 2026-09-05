@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+from datetime import date, datetime
 import requests
 from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
@@ -35,6 +36,36 @@ class SpApiSalesRepository:
         deadline_at: float | None = None,
     ) -> dict[str, SalesInfo]:
         return self._fetch_sales_for_asins(asin_list, start_date, end_date, "Day", deadline_at)
+
+    def get_sales_by_date(
+        self, asin_list: list[str], start_date: str, end_date: str
+    ) -> dict[str, dict[date, SalesInfo]]:
+        # 1 ASIN 1リクエストで期間全体を Day 粒度で取る。失敗した ASIN は結果に
+        # 入れない（欠測を 0 と書くと販売0件と見分けがつかない）
+        by_asin: dict[str, dict[date, SalesInfo]] = {}
+        for i, asin in enumerate(asin_list):
+            if i > 0:
+                time.sleep(REQUEST_INTERVAL_SECONDS)
+            try:
+                response = self._auth.request("GET", self._metrics_url(asin, start_date, end_date))
+            except requests.exceptions.RequestException:
+                continue
+            by_asin[asin] = self._parse_sales_by_date(response.json())
+        return by_asin
+
+    @staticmethod
+    def _parse_sales_by_date(data: dict) -> dict[date, SalesInfo]:
+        by_date: dict[date, SalesInfo] = {}
+        for entry in data.get("payload", []):
+            day = _interval_start_date(entry.get("interval", ""))
+            if day is None:
+                continue
+            by_date[day] = SalesInfo(
+                unit_count=entry.get("unitCount", 0),
+                total_sales_amount=float(entry.get("totalSales", {}).get("amount", 0)),
+                order_count=entry.get("orderCount", 0),
+            )
+        return by_date
 
     def get_weekly_sales(
         self, asin_list: list[str], start_date: str, end_date: str
@@ -101,17 +132,22 @@ class SpApiSalesRepository:
     def _fetch_sales(
         self, asin: str, start_date: str, end_date: str, granularity: str = "Day"
     ) -> SalesInfo:
-        interval = f"{start_date}--{end_date}"
-        url = (
+        url = self._metrics_url(asin, start_date, end_date, granularity)
+        response = self._auth.request("GET", url)
+        return self._parse_sales(response.json())
+
+    @staticmethod
+    def _metrics_url(
+        asin: str, start_date: str, end_date: str, granularity: str = "Day"
+    ) -> str:
+        return (
             f"{SP_API_BASE}/sales/v1/orderMetrics"
             f"?marketplaceIds={MARKETPLACE_JP}"
-            f"&interval={interval}"
+            f"&interval={start_date}--{end_date}"
             f"&granularity={granularity}"
             f"&granularityTimeZone=Asia/Tokyo"
             f"&asin={asin}"
         )
-        response = self._auth.request("GET", url)
-        return self._parse_sales(response.json())
 
     @staticmethod
     def _reject_excessive_failures(failed_asins: list[str], total_count: int) -> None:
@@ -133,3 +169,11 @@ class SpApiSalesRepository:
             total_sales_amount=float(entry.get("totalSales", {}).get("amount", 0)),
             order_count=entry.get("orderCount", 0),
         )
+
+
+def _interval_start_date(interval: str) -> date | None:
+    start = interval.split("--")[0]
+    try:
+        return datetime.fromisoformat(start).date()
+    except ValueError:
+        return None
