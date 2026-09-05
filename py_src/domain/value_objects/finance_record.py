@@ -3,7 +3,9 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class ItemFee:
+class FinanceRecord:
     order_id: str
     seller_sku: str
-    fee_amount: float
+    quantity: int = 0
+    fee_amount: float = 0.0
+    refunded_sales: float = 0.0
