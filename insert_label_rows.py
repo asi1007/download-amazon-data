@@ -20,57 +20,62 @@ SHEET_NAME = "売上/日"
 LABEL_ROW_BACKGROUND = {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}
 
 
-def existing_label_run(index: int, name_values: list[str]) -> int:
-    run = 0
-    for offset, label in enumerate(ROW_LABELS_IN_ORDER, start=1):
-        position = index + offset
-        name = name_values[position].strip() if position < len(name_values) else ""
-        if name != label:
-            break
-        run += 1
-    return run
-
-
-def plan_label_row_insertions(
+def plan_label_insertions(
     asin_values: list[str], name_values: list[str]
-) -> list[tuple[int, int]]:
-    plan: list[tuple[int, int]] = []
+) -> list[tuple[int, list[str]]]:
+    # 期待するラベル列と既存のラベル行を先頭から突き合わせ、足りないものを
+    # その位置へ挿入する計画にする。営業利益のように**途中**へ入るラベルが
+    # あるため、「不足分は末尾」という前提は使えない。
+    # 返すのは (挿入前の1起点の行番号, その位置へ入れるラベル) の並び。
+    plan: list[tuple[int, list[str]]] = []
     for index, value in enumerate(asin_values):
         if len(value.strip()) != ASIN_LENGTH:
             continue
-        run = existing_label_run(index, name_values)
-        missing = len(ROW_LABELS_IN_ORDER) - run
-        if missing:
-            plan.append((index + 1 + run, missing))
+        cursor = index + 1
+        pending: list[str] = []
+        for label in ROW_LABELS_IN_ORDER:
+            name = name_values[cursor].strip() if cursor < len(name_values) else ""
+            if name == label:
+                if pending:
+                    plan.append((cursor + 1, pending))
+                    pending = []
+                cursor += 1
+                continue
+            # 挿入する行は既存の行を押し下げるだけなので cursor は進めない。
+            # 次の期待ラベルは同じ既存行と突き合わせる
+            pending.append(label)
+        if pending:
+            plan.append((cursor + 1, pending))
     return sorted(plan, reverse=True)
 
 
-def build_insert_requests(sheet_id: int, plan: list[tuple[int, int]]) -> list[dict]:
+def build_insert_requests(sheet_id: int, plan: list[tuple[int, list[str]]]) -> list[dict]:
     return [
         {
             "insertDimension": {
                 "range": {
                     "sheetId": sheet_id,
                     "dimension": "ROWS",
-                    "startIndex": row,
-                    "endIndex": row + count,
+                    "startIndex": row - 1,
+                    "endIndex": row - 1 + len(labels),
                 },
                 "inheritFromBefore": False,
             }
         }
-        for row, count in plan
+        for row, labels in plan
     ]
 
 
-def label_row_numbers(plan: list[tuple[int, int]]) -> list[tuple[int, str]]:
-    ascending = sorted(plan)
+def label_row_numbers(plan: list[tuple[int, list[str]]]) -> list[tuple[int, str]]:
+    # 挿入は行番号の降順で送るので、ある挿入より前に適用されるのは自分より
+    # 下の行の挿入だけ。よって自分の最終行番号は「自分より上で挿入された行数」
+    # だけずれる。昇順に走査して累積すればよい
     numbered: list[tuple[int, str]] = []
     shift = 0
-    for row, count in ascending:
-        for offset in range(count):
-            label = ROW_LABELS_IN_ORDER[len(ROW_LABELS_IN_ORDER) - count + offset]
-            numbered.append((row + shift + offset + 1, label))
-        shift += count
+    for row, labels in sorted(plan):
+        for offset, label in enumerate(labels):
+            numbered.append((row + shift + offset, label))
+        shift += len(labels)
     return numbered
 
 
@@ -138,7 +143,7 @@ def _apply_label_row_plan(worksheet: gspread.Worksheet, name_column: int) -> lis
     # 状態」のまま読み直すことになり、同じ計画を立てても二重挿入にはならない。
     asin_values = worksheet.col_values(ASIN_COLUMN)
     name_values = worksheet.col_values(name_column)
-    plan = plan_label_row_insertions(asin_values, name_values)
+    plan = plan_label_insertions(asin_values, name_values)
     if not plan:
         return []
 
@@ -160,12 +165,11 @@ def main() -> None:
     asin_values = worksheet.col_values(ASIN_COLUMN)
     name_values = worksheet.col_values(name_column)
 
-    plan = plan_label_row_insertions(asin_values, name_values)
-    total_missing = sum(missing for _, missing in plan)
-    print(f"ラベル行を挿入する対象: {len(plan)} 件（不足 {total_missing} 行）")
-    for row, missing in plan:
-        asin_index = row - 1 - (len(ROW_LABELS_IN_ORDER) - missing)
-        print(f"  行{row} ({asin_values[asin_index].strip()}) の直下に {missing} 行不足")
+    plan = plan_label_insertions(asin_values, name_values)
+    total_missing = sum(len(labels) for _, labels in plan)
+    print(f"ラベル行を挿入する箇所: {len(plan)} 件（合計 {total_missing} 行）")
+    for row, labels in sorted(plan):
+        print(f"  行{row} の位置へ {', '.join(labels)}")
     if dry_run or not plan:
         return
 

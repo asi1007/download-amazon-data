@@ -10,6 +10,7 @@ from py_src.infrastructure.sheets.label_rows import (
     ROW_LABELS_IN_ORDER,
     bind_label_rows,
     date_serial,
+    OPERATING_PROFIT_ROW_LABEL,
     find_column,
     read_date_columns,
 )
@@ -57,8 +58,13 @@ class TestBindLabelRows:
 
 class TestRowLabelsInOrder:
     def test_order_matches_the_spec(self) -> None:
+        # 営業利益は粗利益の上。marketar/listing-creator 側の LABEL_ROWS_IN_ORDER
+        # と一致していなければ、新商品だけ行が足りなくなる
         assert ROW_LABELS_IN_ORDER == (
-            AD_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL,
+            AD_ROW_LABEL,
+            OPERATING_PROFIT_ROW_LABEL,
+            GROSS_PROFIT_ROW_LABEL,
+            AD_COST_ROW_LABEL,
         )
 
 

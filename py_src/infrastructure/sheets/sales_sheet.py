@@ -14,6 +14,8 @@ from py_src.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.sheets.label_rows import (
     ASIN_COLUMN,
     GROSS_PROFIT_ROW_LABEL,
+    OPERATING_PROFIT_ROW_LABEL,
+    AD_COST_ROW_LABEL,
     K_YEN_NUMBER_FORMAT,
     PRODUCT_NAME_HEADER,
     bind_label_rows,
@@ -296,6 +298,9 @@ class SalesSheet:
         self._worksheet.batch_update(requests, value_input_option="RAW")
         if estimated_cells:
             self._worksheet.format(estimated_cells, GROSS_PROFIT_ESTIMATE_FORMAT)
+        # 列が作られた直後は営業利益の数式が無い。粗利益を書くたびに入れ直す
+        # （同じ数式なので何度書いても同じ）
+        self.write_operating_profit_formulas([column])
         return GrossProfitWriteResult(
             cells_written=len(requests), asins_without_row=asins_without_row
         )
@@ -310,6 +315,7 @@ class SalesSheet:
         requests: list[dict] = []
         notes: dict[str, str] = {}
         settled_cells: list[str] = []
+        written_columns: set[int] = set()
         skipped_dates: list[str] = []
         missing_asins: set[str] = set()
 
@@ -323,6 +329,7 @@ class SalesSheet:
                 if not rows:
                     missing_asins.add(cell.asin)
                     continue
+                written_columns.add(column)
                 for row in rows:
                     a1 = rowcol_to_a1(row, column)
                     requests.append({"range": a1, "values": [[cell.profit]]})
@@ -337,6 +344,7 @@ class SalesSheet:
             self._worksheet.batch_update(requests, value_input_option="RAW")
             self._worksheet.update_notes(notes)
             self._apply_settlement_formats(all_cells, set(settled_cells))
+            self.write_operating_profit_formulas(sorted(written_columns))
         return ActualProfitWriteResult(
             cells_written=len(requests),
             cells_cleared=len(settled_cells),
@@ -359,6 +367,52 @@ class SalesSheet:
                         else GROSS_PROFIT_ESTIMATE_FORMAT
                     },
                     "fields": SETTLEMENT_FORMAT_FIELDS,
+                }
+            }
+            for cell in cells
+        ]
+        self._worksheet.spreadsheet.batch_update({"requests": requests})
+
+    @retry_on_transient_error
+    def write_operating_profit_formulas(self, columns: list[int]) -> int:
+        # 営業利益は値ではなく数式で持つ。粗利益と広告費のどちらが後から更新
+        # されても追従し、書き込む順序に依存しない。粗利益が空の日は空にする
+        # （0 と書くと「利益ゼロ」と見分けがつかない）
+        headers = self._worksheet.row_values(HEADER_ROW)
+        name_column = find_label_column(headers, PRODUCT_NAME_HEADER)
+        asin_values = self._worksheet.col_values(ASIN_COLUMN)
+        name_values = self._worksheet.col_values(name_column)
+        operating_rows = bind_label_rows(asin_values, name_values, OPERATING_PROFIT_ROW_LABEL)
+        gross_rows = bind_label_rows(asin_values, name_values, GROSS_PROFIT_ROW_LABEL)
+        cost_rows = bind_label_rows(asin_values, name_values, AD_COST_ROW_LABEL)
+
+        requests = [
+            {
+                "range": rowcol_to_a1(row, column),
+                "values": [[_operating_profit_formula(gross, cost, column)]],
+            }
+            for asin, rows in operating_rows.items()
+            for row, gross, cost in zip(
+                rows, gross_rows.get(asin, []), cost_rows.get(asin, [])
+            )
+            if row > HEADER_ROW
+            for column in columns
+        ]
+        if not requests:
+            return 0
+        cells = [request["range"] for request in requests]
+        self._worksheet.batch_update(requests, value_input_option="USER_ENTERED")
+        self._apply_operating_profit_format(cells)
+        return len(requests)
+
+    def _apply_operating_profit_format(self, cells: list[str]) -> None:
+        sheet_id = self._worksheet.id
+        requests = [
+            {
+                "repeatCell": {
+                    "range": a1_range_to_grid_range(cell, sheet_id),
+                    "cell": {"userEnteredFormat": {"numberFormat": K_YEN_NUMBER_FORMAT}},
+                    "fields": "userEnteredFormat.numberFormat",
                 }
             }
             for cell in cells
@@ -393,3 +447,9 @@ def _estimate_note(cell: ActualProfitCell) -> str:
 
 def _cell_value(profit: float | None) -> float | str:
     return "" if profit is None else profit
+
+
+def _operating_profit_formula(gross_row: int, cost_row: int, column: int) -> str:
+    gross = rowcol_to_a1(gross_row, column)
+    cost = rowcol_to_a1(cost_row, column)
+    return f'=IF({gross}="","",{gross}-N({cost}))'

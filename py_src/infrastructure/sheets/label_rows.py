@@ -11,10 +11,14 @@ ASIN_LENGTH = 10
 SHEETS_EPOCH = date(1899, 12, 30)
 
 AD_ROW_LABEL = "広告経由"
+OPERATING_PROFIT_ROW_LABEL = "営業利益"
 GROSS_PROFIT_ROW_LABEL = "粗利益"
 AD_COST_ROW_LABEL = "広告費"
+# 営業利益は粗利益の上に置く。値ではなく数式（粗利益 − 広告費）を入れるので、
+# 粗利益と広告費のどちらが後から更新されても自動で追従する
 ROW_LABELS_IN_ORDER: tuple[str, ...] = (
     AD_ROW_LABEL,
+    OPERATING_PROFIT_ROW_LABEL,
     GROSS_PROFIT_ROW_LABEL,
     AD_COST_ROW_LABEL,
 )
