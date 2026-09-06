@@ -9,8 +9,10 @@ from py_src.infrastructure.sheets.fee_gap_sheet import FEE_GAP_SHEET_NAME, FeeGa
 
 UPDATED_AT = datetime(2026, 9, 5, 3, 0)
 GAPS = [
-    FeeGap(asin="B0GSLDK2DJ", quantity=114, estimated_unit_fee=259.4, actual_unit_fee=396.4),
-    FeeGap(asin="B0HD5T1XF1", quantity=8, estimated_unit_fee=457.0, actual_unit_fee=291.8),
+    FeeGap(asin="B0GSLDK2DJ", quantity=114, estimated_referral_fee=37.4,
+           actual_referral_fee=40.0, estimated_fba_fee=222.0, actual_fba_fee=356.4),
+    FeeGap(asin="B0HD5T1XF1", quantity=8, estimated_referral_fee=139.0,
+           actual_referral_fee=40.0, estimated_fba_fee=318.0, actual_fba_fee=251.8),
 ]
 NAMES = {"B0GSLDK2DJ": "ルーペ", "B0HD5T1XF1": "ボール"}
 
@@ -34,11 +36,19 @@ class TestFeeGapSheet:
 
         assert written == 2
         values = worksheet.update.call_args[0][0]
-        assert values[0] == ["ASIN", "商品名", "個数", "見積/個", "実測/個", "差/個", "差%", "更新"]
+        assert values[0] == [
+            "ASIN", "商品名", "個数",
+            "見積 販売手数料/個", "実測 販売手数料/個", "販売手数料 差",
+            "見積 FBA/個", "実測 FBA/個", "FBA 差",
+            "合計 差/個", "更新",
+        ]
         assert values[1][0] == (
             '=HYPERLINK("https://www.amazon.co.jp/dp/B0GSLDK2DJ","B0GSLDK2DJ")'
         )
-        assert values[1][1:] == ["ルーペ", 114, 259.4, 396.4, 137.0, 0.528, "2026-09-05 03:00"]
+        # 販売手数料（価格連動）と FBA手数料（価格非連動）を分けて出す
+        assert values[1][1:] == [
+            "ルーペ", 114, 37.4, 40.0, 2.6, 222.0, 356.4, 134.4, 137.0, "2026-09-05 03:00"
+        ]
 
     def test_creates_the_worksheet_when_it_does_not_exist(self) -> None:
         spreadsheet, _ = _spreadsheet(existing=False)

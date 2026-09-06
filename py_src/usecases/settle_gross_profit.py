@@ -37,7 +37,8 @@ def aggregate_settled(
         current = settled.get(key, SettledFees())
         settled[key] = SettledFees(
             quantity=current.quantity + record.quantity,
-            fee_amount=current.fee_amount + record.fee_amount,
+            fba_fee_amount=current.fba_fee_amount + record.fba_fee_amount,
+            referral_fee_amount=current.referral_fee_amount + record.referral_fee_amount,
             refunded_sales=current.refunded_sales + record.refunded_sales,
         )
     return settled, unknown_sku_count
@@ -80,14 +81,17 @@ def build_fee_gaps(
         current = totals.get(asin, SettledFees())
         totals[asin] = SettledFees(
             quantity=current.quantity + measured.quantity,
-            fee_amount=current.fee_amount + measured.fee_amount,
+            fba_fee_amount=current.fba_fee_amount + measured.fba_fee_amount,
+            referral_fee_amount=current.referral_fee_amount + measured.referral_fee_amount,
         )
     gaps = [
         FeeGap(
             asin=asin,
             quantity=measured.quantity,
-            estimated_unit_fee=costs[asin].selling_fee + costs[asin].fba_fee,
-            actual_unit_fee=measured.fee_amount / measured.quantity,
+            estimated_referral_fee=costs[asin].selling_fee,
+            actual_referral_fee=measured.referral_fee_amount / measured.quantity,
+            estimated_fba_fee=costs[asin].fba_fee,
+            actual_fba_fee=measured.fba_fee_amount / measured.quantity,
         )
         for asin, measured in totals.items()
         if measured.quantity > 0

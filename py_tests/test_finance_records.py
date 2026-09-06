@@ -72,8 +72,9 @@ class TestGetFinanceRecords:
         records = FinancesRepository(authenticator=auth).get_finance_records("a", "b")
 
         assert records == [
-            FinanceRecord(order_id="503-1", seller_sku="ZW-R3RT-17SM",
-                          quantity=2, fee_amount=572.0, refunded_sales=0.0)
+            FinanceRecord(order_id="503-1", seller_sku="ZW-R3RT-17SM", quantity=2,
+                          fba_fee_amount=500.0, referral_fee_amount=72.0,
+                          refunded_sales=0.0)
         ]
 
     def test_refund_reverses_quantity_and_nets_the_fee_adjustments(self) -> None:
@@ -85,8 +86,9 @@ class TestGetFinanceRecords:
         records = FinancesRepository(authenticator=auth).get_finance_records("a", "b")
 
         assert records == [
-            FinanceRecord(order_id="503-2", seller_sku="BW-5Z8A-WYZV",
-                          quantity=-1, fee_amount=-30.0, refunded_sales=434.0)
+            FinanceRecord(order_id="503-2", seller_sku="BW-5Z8A-WYZV", quantity=-1,
+                          fba_fee_amount=0.0, referral_fee_amount=-30.0,
+                          refunded_sales=434.0)
         ]
 
     def test_collects_both_lists_from_the_same_page(self) -> None:
@@ -120,3 +122,28 @@ class TestGetFinanceRecords:
         records = FinancesRepository(authenticator=auth).get_finance_records("a", "b")
 
         assert [r.order_id for r in records] == ["503-1"]
+
+
+class TestFeeSplit:
+    def test_fba_and_referral_fees_are_counted_separately(self) -> None:
+        # FBA手数料は価格に連動しないのでシートの列と直接比べられる。販売手数料は
+        # 価格に比例するため、セール中に下がっても「列が古い」とは限らない
+        auth = Mock(spec=SpApiAuthenticator)
+        auth.request.return_value = _page(shipments=[{
+            "AmazonOrderId": "503-9",
+            "ShipmentItemList": [{
+                "SellerSKU": "YB-C1TA-NLOP",
+                "QuantityShipped": 1,
+                "ItemFeeList": [
+                    {"FeeType": "FBAPerUnitFulfillmentFee", "FeeAmount": _amount(-252.0)},
+                    {"FeeType": "Commission", "FeeAmount": _amount(-37.0)},
+                    {"FeeType": "ShippingChargeback", "FeeAmount": _amount(-7.0)},
+                ],
+            }],
+        }])
+
+        record = FinancesRepository(authenticator=auth).get_finance_records("a", "b")[0]
+
+        assert record.fba_fee_amount == 252.0
+        assert record.referral_fee_amount == 44.0
+        assert record.fee_amount == 296.0

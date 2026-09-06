@@ -45,7 +45,7 @@ def _build(records: list[FinanceRecord] | None = None) -> tuple:
     finances_repo.get_finance_records.return_value = (
         records
         if records is not None
-        else [FinanceRecord("503-1", "SKU-A", quantity=3, fee_amount=1050.0)]
+        else [FinanceRecord("503-1", "SKU-A", quantity=3, fba_fee_amount=756.0, referral_fee_amount=294.0)]
     )
     index_reader = Mock(spec=ProductIndexReader)
     index_reader.read.return_value = INDEX
@@ -80,7 +80,8 @@ class TestUpdateActualGrossProfit:
 
         gaps = fee_gap_sheet.write.call_args[0][0]
         assert gaps[0].asin == "B00EXAMPLE"
-        assert gaps[0].actual_unit_fee == 350.0
+        assert gaps[0].actual_fba_fee == 252.0
+        assert gaps[0].actual_referral_fee == 98.0
         assert fee_gap_sheet.write.call_args[0][1] == {"B00EXAMPLE": "ルーペ"}
 
     def test_raises_without_touching_the_sheet_when_no_actuals_came_back(self) -> None:
@@ -110,8 +111,8 @@ class TestUpdateActualGrossProfit:
     def test_counts_skus_that_are_not_on_the_sheet(self) -> None:
         usecase, _, _, _, _, _ = _build(
             records=[
-                FinanceRecord("503-1", "SKU-A", quantity=3, fee_amount=1050.0),
-                FinanceRecord("503-1", "SKU-GONE", quantity=1, fee_amount=100.0),
+                FinanceRecord("503-1", "SKU-A", quantity=3, fba_fee_amount=756.0, referral_fee_amount=294.0),
+                FinanceRecord("503-1", "SKU-GONE", quantity=1, fba_fee_amount=100.0),
             ]
         )
 

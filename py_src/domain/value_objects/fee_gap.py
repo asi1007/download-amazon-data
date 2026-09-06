@@ -6,15 +6,26 @@ from dataclasses import dataclass
 class FeeGap:
     asin: str
     quantity: int
-    estimated_unit_fee: float
-    actual_unit_fee: float
+    estimated_referral_fee: float
+    actual_referral_fee: float
+    estimated_fba_fee: float
+    actual_fba_fee: float
+
+    @property
+    def fba_difference(self) -> float:
+        return self.actual_fba_fee - self.estimated_fba_fee
+
+    @property
+    def referral_difference(self) -> float:
+        return self.actual_referral_fee - self.estimated_referral_fee
 
     @property
     def difference(self) -> float:
-        return self.actual_unit_fee - self.estimated_unit_fee
+        return self.fba_difference + self.referral_difference
 
     @property
     def ratio(self) -> float:
-        if not self.estimated_unit_fee:
+        estimated_total = self.estimated_referral_fee + self.estimated_fba_fee
+        if not estimated_total:
             return 0.0
-        return self.difference / self.estimated_unit_fee
+        return self.difference / estimated_total

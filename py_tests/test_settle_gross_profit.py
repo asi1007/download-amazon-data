@@ -18,23 +18,20 @@ COSTS = {"B00EXAMPLE": UnitCosts(selling_fee=100.0, fba_fee=200.0, cost=400.0)}
 class TestAggregateSettled:
     def test_groups_by_order_date_and_asin(self) -> None:
         records = [
-            FinanceRecord("503-1", "SKU-A", quantity=2, fee_amount=600.0),
-            FinanceRecord("503-1", "SKU-A", quantity=1, fee_amount=300.0),
-            FinanceRecord("503-2", "SKU-B", quantity=1, fee_amount=250.0),
+            FinanceRecord("503-1", "SKU-A", quantity=2, fba_fee_amount=600.0),
+            FinanceRecord("503-1", "SKU-A", quantity=1, fba_fee_amount=300.0),
+            FinanceRecord("503-2", "SKU-B", quantity=1, fba_fee_amount=250.0),
         ]
 
         settled, unknown = aggregate_settled(records, PURCHASE_DATES, SKU_TO_ASIN)
 
-        assert settled[(date(2026, 9, 1), "B00EXAMPLE")] == SettledFees(
-            quantity=3, fee_amount=900.0
-        )
-        assert settled[(date(2026, 9, 2), "B00EXAMPLF")] == SettledFees(
-            quantity=1, fee_amount=250.0
-        )
+        assert settled[(date(2026, 9, 1), "B00EXAMPLE")].quantity == 3
+        assert settled[(date(2026, 9, 1), "B00EXAMPLE")].fee_amount == 900.0
+        assert settled[(date(2026, 9, 2), "B00EXAMPLF")].fee_amount == 250.0
         assert unknown == 0
 
     def test_counts_skus_that_are_not_on_the_sheet(self) -> None:
-        records = [FinanceRecord("503-1", "SKU-UNKNOWN", quantity=1, fee_amount=100.0)]
+        records = [FinanceRecord("503-1", "SKU-UNKNOWN", quantity=1, fba_fee_amount=100.0)]
 
         settled, unknown = aggregate_settled(records, PURCHASE_DATES, SKU_TO_ASIN)
 
@@ -43,7 +40,7 @@ class TestAggregateSettled:
 
     def test_ignores_orders_placed_outside_the_window(self) -> None:
         # 窓より前に注文され、窓の中で出荷された分。書き換える日が窓に無い
-        records = [FinanceRecord("503-OLD", "SKU-A", quantity=1, fee_amount=100.0)]
+        records = [FinanceRecord("503-OLD", "SKU-A", quantity=1, fba_fee_amount=100.0)]
 
         settled, unknown = aggregate_settled(records, PURCHASE_DATES, SKU_TO_ASIN)
 
@@ -52,15 +49,16 @@ class TestAggregateSettled:
 
     def test_refund_reduces_quantity_and_fee_for_the_same_day(self) -> None:
         records = [
-            FinanceRecord("503-1", "SKU-A", quantity=1, fee_amount=300.0),
-            FinanceRecord("503-1", "SKU-A", quantity=-1, fee_amount=-30.0, refunded_sales=434.0),
+            FinanceRecord("503-1", "SKU-A", quantity=1, fba_fee_amount=300.0),
+            FinanceRecord("503-1", "SKU-A", quantity=-1, fba_fee_amount=-30.0, refunded_sales=434.0),
         ]
 
         settled, _ = aggregate_settled(records, PURCHASE_DATES, SKU_TO_ASIN)
 
-        assert settled[(date(2026, 9, 1), "B00EXAMPLE")] == SettledFees(
-            quantity=0, fee_amount=270.0, refunded_sales=434.0
-        )
+        measured = settled[(date(2026, 9, 1), "B00EXAMPLE")]
+        assert measured.quantity == 0
+        assert measured.fee_amount == 270.0
+        assert measured.refunded_sales == 434.0
 
 
 class TestBuildProfitCells:
@@ -68,7 +66,7 @@ class TestBuildProfitCells:
         sales = {"B00EXAMPLE": {
             date(2026, 9, 1): SalesInfo(unit_count=3, total_sales_amount=6000.0),
         }}
-        settled = {(date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=3, fee_amount=1050.0)}
+        settled = {(date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=3, fba_fee_amount=1050.0)}
 
         cells = build_profit_cells(sales, settled, COSTS)
 
@@ -98,8 +96,8 @@ class TestBuildProfitCells:
 class TestBuildFeeGaps:
     def test_reports_per_unit_estimate_against_per_unit_actual(self) -> None:
         settled = {
-            (date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=2, fee_amount=800.0),
-            (date(2026, 9, 2), "B00EXAMPLE"): SettledFees(quantity=2, fee_amount=800.0),
+            (date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=2, fba_fee_amount=600.0, referral_fee_amount=200.0),
+            (date(2026, 9, 2), "B00EXAMPLE"): SettledFees(quantity=2, fba_fee_amount=600.0, referral_fee_amount=200.0),
         }
 
         gaps = build_fee_gaps(settled, COSTS)
@@ -108,8 +106,9 @@ class TestBuildFeeGaps:
         gap = gaps[0]
         assert gap.asin == "B00EXAMPLE"
         assert gap.quantity == 4
-        assert gap.estimated_unit_fee == 300.0
-        assert gap.actual_unit_fee == 400.0
+        assert gap.estimated_referral_fee == 100.0
+        assert gap.estimated_fba_fee == 200.0
+        assert gap.actual_fba_fee + gap.actual_referral_fee == 400.0
         assert gap.difference == 100.0
         assert round(gap.ratio, 4) == round(100.0 / 300.0, 4)
 
@@ -119,8 +118,8 @@ class TestBuildFeeGaps:
             "B00BIG99999": UnitCosts(selling_fee=100.0, fba_fee=200.0, cost=0.0),
         }
         settled = {
-            (date(2026, 9, 1), "B00SMALL999"): SettledFees(quantity=1, fee_amount=310.0),
-            (date(2026, 9, 1), "B00BIG99999"): SettledFees(quantity=1, fee_amount=600.0),
+            (date(2026, 9, 1), "B00SMALL999"): SettledFees(quantity=1, fba_fee_amount=310.0),
+            (date(2026, 9, 1), "B00BIG99999"): SettledFees(quantity=1, fba_fee_amount=600.0),
         }
 
         assert [gap.asin for gap in build_fee_gaps(settled, costs)] == [
@@ -128,7 +127,7 @@ class TestBuildFeeGaps:
         ]
 
     def test_asin_with_no_settled_units_is_left_out(self) -> None:
-        settled = {(date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=0, fee_amount=0.0)}
+        settled = {(date(2026, 9, 1), "B00EXAMPLE"): SettledFees(quantity=0, fba_fee_amount=0.0)}
 
         assert build_fee_gaps(settled, COSTS) == []
 

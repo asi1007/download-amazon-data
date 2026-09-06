@@ -5,6 +5,10 @@ from py_src.domain.value_objects.finance_record import FinanceRecord
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
 
 PRINCIPAL_CHARGE_TYPE = "Principal"
+# FBA手数料は価格に連動しない（シートの FBA手数料 列と直接比べられる）。
+# 販売手数料は価格に比例するため、セール中は下がるのが当然で「列が古い」とは
+# 限らない。原因を切り分けるには分けて数える必要がある
+FBA_FEE_TYPE_PREFIX = "FBA"
 
 
 class FinancesRepository:
@@ -70,10 +74,7 @@ class FinancesRepository:
                 if not seller_sku:
                     continue
                 quantity = item.get("QuantityShipped", 0)
-                fee_total = -sum(
-                    fee.get("FeeAmount", {}).get("CurrencyAmount", 0)
-                    for fee in item.get(fee_key, [])
-                )
+                fba_fee, referral_fee = _split_fees(item.get(fee_key, []))
                 refunded_sales = 0.0
                 if refund_charge_key is not None:
                     quantity = -quantity
@@ -87,8 +88,20 @@ class FinancesRepository:
                         order_id=order_id,
                         seller_sku=seller_sku,
                         quantity=quantity,
-                        fee_amount=fee_total,
+                        fba_fee_amount=fba_fee,
+                        referral_fee_amount=referral_fee,
                         refunded_sales=refunded_sales,
                     )
                 )
         return records
+
+
+def _split_fees(fees: list[dict]) -> tuple[float, float]:
+    fba = referral = 0.0
+    for fee in fees:
+        amount = -fee.get("FeeAmount", {}).get("CurrencyAmount", 0)
+        if str(fee.get("FeeType", "")).startswith(FBA_FEE_TYPE_PREFIX):
+            fba += amount
+        else:
+            referral += amount
+    return fba, referral
