@@ -14,6 +14,7 @@ from py_src.infrastructure.sheets.label_rows import (
     find_column,
 )
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
+from py_src.infrastructure.sheets.row_groups import RowGroups
 from py_src.infrastructure.sheets.row_heights import RowHeights
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
@@ -180,6 +181,8 @@ def main() -> None:
     # 挿入した行は ASIN 行と同じ高さで入る。縮めておかないと1商品が縦に長くなる
     shrunk = RowHeights(worksheet).shrink_label_rows()
     print(f"ラベル行 {shrunk} 行の高さを縮めました")
+    grouped = RowGroups(worksheet).collapse_label_rows()
+    print(f"行グループを {grouped} 件作り、折りたたみました")
 
 
 if __name__ == "__main__":

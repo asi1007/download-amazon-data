@@ -28,8 +28,7 @@ class TestPlanLabelInsertions:
         assert plan_label_insertions(asin, name) == []
 
     def test_label_missing_in_the_middle_is_inserted_in_place(self) -> None:
-        # 既存シートは 広告経由 / 粗利益 / 広告費 の3行。営業利益は広告経由の
-        # 直後（粗利益の上）へ入れる。「不足分は末尾」だと既存行が孤児になる
+        # 営業利益より上に別のラベルがある形。「不足分は末尾」だと既存行が孤児になる
         asin, name = _sheet([
             ("B00EXAMPLE", "ルーペ"),
             ("", "広告経由"),
@@ -37,7 +36,7 @@ class TestPlanLabelInsertions:
             ("", "広告費"),
         ])
 
-        assert plan_label_insertions(asin, name) == [(7, ["営業利益"])]
+        assert plan_label_insertions(asin, name) == [(6, ["営業利益"])]
 
     def test_two_products_are_planned_from_the_bottom_up(self) -> None:
         asin, name = _sheet([
@@ -51,7 +50,7 @@ class TestPlanLabelInsertions:
             ("", "広告費"),
         ])
 
-        assert plan_label_insertions(asin, name) == [(11, ["営業利益"]), (7, ["営業利益"])]
+        assert plan_label_insertions(asin, name) == [(10, ["営業利益"]), (6, ["営業利益"])]
 
 
 class TestRowArithmetic:

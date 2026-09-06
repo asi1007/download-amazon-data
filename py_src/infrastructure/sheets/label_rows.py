@@ -16,12 +16,16 @@ GROSS_PROFIT_ROW_LABEL = "粗利益"
 AD_COST_ROW_LABEL = "広告費"
 # 営業利益は粗利益の上に置く。値ではなく数式（粗利益 − 広告費）を入れるので、
 # 粗利益と広告費のどちらが後から更新されても自動で追従する
+# 営業利益を先頭に置く。残りの3行は折りたたむので、たたんだ状態でも
+# ASIN行（売上個数）と営業利益が並んで見える
 ROW_LABELS_IN_ORDER: tuple[str, ...] = (
-    AD_ROW_LABEL,
     OPERATING_PROFIT_ROW_LABEL,
+    AD_ROW_LABEL,
     GROSS_PROFIT_ROW_LABEL,
     AD_COST_ROW_LABEL,
 )
+# 折りたたむラベル行（営業利益より下の3本）
+COLLAPSIBLE_ROW_LABELS: tuple[str, ...] = ROW_LABELS_IN_ORDER[1:]
 
 # 粗利益・広告費は千円単位・小数点1桁で表示する。カンマ1個で 1/1000 に
 # スケールされるので、セルには円のまま書いて表示だけを変える（総売上の

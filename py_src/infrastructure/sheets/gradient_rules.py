@@ -9,6 +9,7 @@ from py_src.infrastructure.sheets.label_rows import (
     HEADER_ROW,
     OPERATING_PROFIT_ROW_LABEL,
     PRODUCT_NAME_HEADER,
+    ROW_LABELS_IN_ORDER,
     bind_label_rows,
     find_column,
     read_date_columns,
@@ -83,34 +84,35 @@ class GradientRules:
         first: int,
         last: int,
     ) -> list[dict]:
-        ad_rows = bind_label_rows(asin_values, name_values, AD_ROW_LABEL)
-        operating_rows = bind_label_rows(
-            asin_values, name_values, OPERATING_PROFIT_ROW_LABEL
+        # ブロックの起点は先頭ラベルから取る。「広告経由の1つ上が ASIN 行」と
+        # 決め打つと、ラベルを並べ替えたときに別の行を掴む
+        first_label_rows = bind_label_rows(
+            asin_values, name_values, ROW_LABELS_IN_ORDER[0]
         )
+        ad_offset = ROW_LABELS_IN_ORDER.index(AD_ROW_LABEL)
+        operating_offset = ROW_LABELS_IN_ORDER.index(OPERATING_PROFIT_ROW_LABEL)
         rules: list[dict] = []
-        for asin, rows in ad_rows.items():
-            for ad_row in rows:
-                # 売上個数（ASIN行）と広告経由の個数を1つのスケールに載せる。
-                # 商品ごとに独立させないと、販売数の多い商品以外が同じ色になる
-                asin_row = ad_row - 1
+        operating_ranges: list[dict] = []
+        for rows in first_label_rows.values():
+            for first_label in rows:
+                asin_row = first_label - 1
                 if asin_row <= HEADER_ROW:
                     continue
+                # 売上個数（ASIN行）と広告経由の個数を1つのスケールに載せる。
+                # 商品ごとに独立させないと、販売数の多い商品以外が同じ色になる
                 rules.append({
                     "ranges": [
                         _grid_range(sheet_id, asin_row, first, last),
-                        _grid_range(sheet_id, ad_row, first, last),
+                        _grid_range(sheet_id, first_label + ad_offset, first, last),
                     ],
                     "gradientRule": _gradient(PALE_RED, PALE_BLUE),
                 })
+                operating_ranges.append(
+                    _grid_range(sheet_id, first_label + operating_offset, first, last)
+                )
         # 営業利益は全商品で1つのスケールにする。0円を白に固定してあるので、
         # 同じ金額なら商品をまたいで同じ色になり、金額そのものを比べられる。
         # 個数は商品ごとに桁が違うため、こちらは商品ごとのスケールのままにする
-        operating_ranges = [
-            _grid_range(sheet_id, row, first, last)
-            for rows in operating_rows.values()
-            for row in rows
-            if row > HEADER_ROW
-        ]
         if operating_ranges:
             rules.append({
                 "ranges": operating_ranges,

@@ -10,12 +10,7 @@ from py_src.infrastructure.sheets.gradient_rules import (
     WHITE,
     GradientRules,
 )
-from py_src.infrastructure.sheets.label_rows import (
-    AD_COST_ROW_LABEL,
-    AD_ROW_LABEL,
-    GROSS_PROFIT_ROW_LABEL,
-    OPERATING_PROFIT_ROW_LABEL,
-)
+from py_src.infrastructure.sheets.label_rows import ROW_LABELS_IN_ORDER
 
 
 def _worksheet(existing_rules: int = 0) -> Mock:
@@ -23,7 +18,7 @@ def _worksheet(existing_rules: int = 0) -> Mock:
     worksheet.id = 0
     worksheet.row_values.return_value = ["ASIN", "商品名", 46269, 46268]
     col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", "", "B00EXAMPLF", "", "", "", ""]
-    labels = [AD_ROW_LABEL, OPERATING_PROFIT_ROW_LABEL, GROSS_PROFIT_ROW_LABEL, AD_COST_ROW_LABEL]
+    labels = list(ROW_LABELS_IN_ORDER)
     col_name = ["", "", "", "商品名", "ルーペ"] + labels + ["ボール"] + labels
     worksheet.col_values.side_effect = lambda col, **kwargs: col_a if col == 1 else col_name
     worksheet.spreadsheet.fetch_sheet_metadata.return_value = {
@@ -56,7 +51,8 @@ class TestGradientRules:
         GradientRules(worksheet).apply()
 
         ranges = _rules(worksheet)[0]["ranges"]
-        assert [r["startRowIndex"] for r in ranges] == [4, 5]
+        # ASIN行（0起点で4）と広告経由行。並べ替え後は隣り合っていない
+        assert [r["startRowIndex"] for r in ranges] == [4, 6]
         assert ranges[0]["startColumnIndex"] == 2
         assert ranges[0]["endColumnIndex"] == 4
 
@@ -82,7 +78,7 @@ class TestGradientRules:
         assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "MAX"}
         # 全商品を1つの規則にまとめる。金額そのものを商品間で比べられる
         assert len(operating) == 1
-        assert [r["startRowIndex"] for r in operating[0]["ranges"]] == [6, 11]
+        assert [r["startRowIndex"] for r in operating[0]["ranges"]] == [5, 10]
 
     def test_only_own_rules_are_deleted(self) -> None:
         # 全件削除していたため、シートに元からあった条件付き書式（在庫日数の
