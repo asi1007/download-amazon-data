@@ -111,9 +111,7 @@ class SalesSheet:
 
         requests: list[dict] = []
         requests.append({"range": rowcol_to_a1(1, col), "values": [[date_serial]]})
-        requests.append(
-            {"range": rowcol_to_a1(FETCH_TIME_ROW, col), "values": [[_fetch_time_label()]]}
-        )
+
         requests.append({"range": rowcol_to_a1(HEADER_ROW, col), "values": [[date_serial]]})
 
         total_amount = 0.0
@@ -138,6 +136,11 @@ class SalesSheet:
             )
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
+        # 行2は営業利益の合計。取得時刻は同じセルのノートへ入れる（当日列は毎時
+        # 上書きされるため、いつ時点の数字かが分からないと読めない）
+        self._worksheet.update_notes(
+            {rowcol_to_a1(FETCH_TIME_ROW, col): f"取得 {_fetch_time_label()}"}
+        )
         apply_column_formats(self._worksheet, col)
 
     def _resolve_column_for(self, date_serial: int) -> int:
@@ -301,6 +304,7 @@ class SalesSheet:
         # 列が作られた直後は営業利益の数式が無い。粗利益を書くたびに入れ直す
         # （同じ数式なので何度書いても同じ）
         self.write_operating_profit_formulas([column])
+        self.write_operating_profit_totals([column])
         return GrossProfitWriteResult(
             cells_written=len(requests), asins_without_row=asins_without_row
         )
@@ -345,6 +349,7 @@ class SalesSheet:
             self._worksheet.update_notes(notes)
             self._apply_settlement_formats(all_cells, set(settled_cells))
             self.write_operating_profit_formulas(sorted(written_columns))
+            self.write_operating_profit_totals(sorted(written_columns))
         return ActualProfitWriteResult(
             cells_written=len(requests),
             cells_cleared=len(settled_cells),
@@ -419,6 +424,27 @@ class SalesSheet:
         ]
         self._worksheet.spreadsheet.batch_update({"requests": requests})
 
+    @retry_on_transient_error
+    def write_operating_profit_totals(self, columns: list[int]) -> int:
+        # 行ごとに合計するのではなく SUMIF で商品名列を引く。商品が増減しても
+        # 数式を書き直さなくて済む
+        headers = self._worksheet.row_values(HEADER_ROW)
+        name_column = find_label_column(headers, PRODUCT_NAME_HEADER)
+        name_letter = _column_letter(name_column)
+        requests = [
+            {
+                "range": rowcol_to_a1(FETCH_TIME_ROW, column),
+                "values": [[_operating_profit_total_formula(name_letter, column)]],
+            }
+            for column in columns
+        ]
+        if not requests:
+            return 0
+        cells = [request["range"] for request in requests]
+        self._worksheet.batch_update(requests, value_input_option="USER_ENTERED")
+        self._worksheet.format(cells, {"numberFormat": TOTAL_AMOUNT_FORMAT["numberFormat"]})
+        return len(requests)
+
     def _gross_profit_rows(self) -> dict[str, list[int]]:
         headers = self._worksheet.row_values(HEADER_ROW)
         name_column = find_label_column(headers, PRODUCT_NAME_HEADER)
@@ -453,3 +479,20 @@ def _operating_profit_formula(gross_row: int, cost_row: int, column: int) -> str
     gross = rowcol_to_a1(gross_row, column)
     cost = rowcol_to_a1(cost_row, column)
     return f'=IF({gross}="","",{gross}-N({cost}))'
+
+
+def _column_letter(column: int) -> str:
+    letters = ""
+    while column:
+        column, remainder = divmod(column - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _operating_profit_total_formula(name_letter: str, column: int) -> str:
+    target = _column_letter(column)
+    first = HEADER_ROW + 1
+    return (
+        f'=SUMIF(${name_letter}${first}:${name_letter},"{OPERATING_PROFIT_ROW_LABEL}",'
+        f"{target}${first}:{target})"
+    )

@@ -111,4 +111,33 @@ class TestFormulasFollowTheProfitWrites:
             for call in worksheet.batch_update.call_args_list
             if str(call[0][0][0]["values"][0][0]).startswith("=")
         ]
-        assert formulas == ['=IF(C8="","",C8-N(C9))']
+        assert formulas == ['=IF(C8="","",C8-N(C9))', '=SUMIF($B$5:$B,"営業利益",C$5:C)']
+
+
+class TestOperatingProfitTotals:
+    def test_row_two_sums_the_operating_profit_rows(self) -> None:
+        worksheet = _worksheet()
+        sheet = SalesSheet(sales_worksheet=worksheet)
+
+        assert sheet.write_operating_profit_totals([3]) == 1
+        request = worksheet.batch_update.call_args[0][0][0]
+        assert request["range"] == "C2"
+        assert request["values"] == [['=SUMIF($B$5:$B,"営業利益",C$5:C)']]
+
+    def test_uses_sumif_so_products_can_be_added_without_editing_the_formula(self) -> None:
+        worksheet = _worksheet()
+        sheet = SalesSheet(sales_worksheet=worksheet)
+
+        sheet.write_operating_profit_totals([3])
+
+        assert "SUMIF" in worksheet.batch_update.call_args[0][0][0]["values"][0][0]
+
+    def test_shown_in_thousands_like_the_total_sales_row(self) -> None:
+        worksheet = _worksheet()
+        sheet = SalesSheet(sales_worksheet=worksheet)
+
+        sheet.write_operating_profit_totals([3])
+
+        assert worksheet.format.call_args[0][1] == {
+            "numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}
+        }

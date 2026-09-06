@@ -15,15 +15,28 @@ from py_src.infrastructure.sheets.label_rows import (
 )
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
-RED = {"red": 0.96, "green": 0.42, "blue": 0.36}
-BLUE = {"red": 0.24, "green": 0.52, "blue": 0.78}
+# 悪い = 赤、良い = 青で全行そろえる。行の種類は色味の濃さで見分ける。
+# 個数はうすい（毎日ぱっと眺める行）、営業利益は濃い（判断に使う行）
 WHITE = {"red": 1.0, "green": 1.0, "blue": 1.0}
-GREY = {"red": 0.55, "green": 0.55, "blue": 0.55}
+PALE_RED = {"red": 0.97, "green": 0.75, "blue": 0.72}
+PALE_BLUE = {"red": 0.72, "green": 0.83, "blue": 0.94}
+DEEP_RED = {"red": 0.84, "green": 0.19, "blue": 0.16}
+DEEP_BLUE = {"red": 0.11, "green": 0.35, "blue": 0.65}
 
 
 def _gradient(minimum: dict, maximum: dict) -> dict:
     return {
         "minpoint": {"color": minimum, "type": "MIN"},
+        "maxpoint": {"color": maximum, "type": "MAX"},
+    }
+
+
+def _gradient_around_zero(minimum: dict, maximum: dict) -> dict:
+    # 0 を白に固定する。MIN を白にすると「最も赤字の日」が白になってしまい、
+    # 黒字か赤字かが色から読めない
+    return {
+        "minpoint": {"color": minimum, "type": "MIN"},
+        "midpoint": {"color": WHITE, "type": "NUMBER", "value": "0"},
         "maxpoint": {"color": maximum, "type": "MAX"},
     }
 
@@ -87,16 +100,22 @@ class GradientRules:
                         _grid_range(sheet_id, asin_row, first, last),
                         _grid_range(sheet_id, ad_row, first, last),
                     ],
-                    "gradientRule": _gradient(RED, BLUE),
+                    "gradientRule": _gradient(PALE_RED, PALE_BLUE),
                 })
-        for rows in operating_rows.values():
-            for row in rows:
-                if row <= HEADER_ROW:
-                    continue
-                rules.append({
-                    "ranges": [_grid_range(sheet_id, row, first, last)],
-                    "gradientRule": _gradient(WHITE, GREY),
-                })
+        # 営業利益は全商品で1つのスケールにする。0円を白に固定してあるので、
+        # 同じ金額なら商品をまたいで同じ色になり、金額そのものを比べられる。
+        # 個数は商品ごとに桁が違うため、こちらは商品ごとのスケールのままにする
+        operating_ranges = [
+            _grid_range(sheet_id, row, first, last)
+            for rows in operating_rows.values()
+            for row in rows
+            if row > HEADER_ROW
+        ]
+        if operating_ranges:
+            rules.append({
+                "ranges": operating_ranges,
+                "gradientRule": _gradient_around_zero(DEEP_RED, DEEP_BLUE),
+            })
         return rules
 
     def _delete_existing(self, first: int, last: int) -> list[dict]:

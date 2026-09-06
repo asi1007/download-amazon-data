@@ -76,8 +76,12 @@ class TestWritePricesUsesSalesResolvedColumn:
         sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=3)}, target_date=YESTERDAY)
         sheet.write_prices({"B00EXAMPLE": 3000.0})
 
-        note_cells = list(sales_ws.update_notes.call_args_list[0][0][0].keys())
-        assert note_cells == [rowcol_to_a1(5, 4)]
+        # write_sales_nums が取得時刻のノートを書くので、価格のノートだけを見る
+        price_notes = [
+            call[0][0] for call in sales_ws.update_notes.call_args_list
+            if not any(str(v).startswith("取得") for v in call[0][0].values())
+        ]
+        assert list(price_notes[0].keys()) == [rowcol_to_a1(5, 4)]
 
     def test_does_not_write_price_to_today_leftmost_column(self) -> None:
         sales_ws = _create_mock_worksheet_with_today_and_yesterday_columns()

@@ -40,7 +40,7 @@ class TestWriteActualGrossProfit:
         })
 
         assert result.cells_written == 1
-        requests = worksheet.batch_update.call_args[0][0]
+        requests = worksheet.batch_update.call_args_list[0][0][0]
         assert requests == [{"range": rowcol_to_a1(6, PROFIT_COLUMN), "values": [[3750.0]]}]
 
     def test_keeps_the_estimate_in_the_cell_note(self) -> None:
@@ -149,4 +149,5 @@ class TestWriteActualGrossProfit:
         })
 
         assert result.cells_written == 2
-        assert worksheet.batch_update.call_count == 1
+        # 粗利益の値は1回の batch_update にまとまる（続く呼び出しは営業利益の数式と合計）
+        assert len(worksheet.batch_update.call_args_list[0][0][0]) == 2

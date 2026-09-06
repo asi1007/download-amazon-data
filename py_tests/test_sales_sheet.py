@@ -300,9 +300,12 @@ class TestWritePricesQuota:
 
         sheet.write_prices({"B00EXAMPLE": 3000.0, "B00EXAMPLF": 2000.0})
 
-        assert len(sales_ws.update_notes.call_args_list) == 1
-        notes = sales_ws.update_notes.call_args_list[0][0][0]
-        assert set(notes.values()) == {"3000.0", "2000.0"}
+        price_notes = [
+            call[0][0] for call in sales_ws.update_notes.call_args_list
+            if not any(str(v).startswith("取得") for v in call[0][0].values())
+        ]
+        assert len(price_notes) == 1
+        assert set(price_notes[0].values()) == {"3000.0", "2000.0"}
 
     def test_colors_cheaper_and_pricier_cells_in_two_calls(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -327,7 +330,15 @@ class TestWritePricesQuota:
         sheet.write_prices({"UNKNOWN": 3000.0})
 
         assert sales_ws.batch_update.call_count == batch_update_calls_before
-        sales_ws.update_notes.assert_not_called()
+        assert _price_note_calls(sales_ws) == 0
+
+
+def _price_note_calls(sales_ws: Mock) -> int:
+    # write_sales_nums が取得時刻のノートを書くので、価格のノートだけを数える
+    return sum(
+        1 for call in sales_ws.update_notes.call_args_list
+        if not any(str(v).startswith("取得") for v in call[0][0].values())
+    )
 
 
 def _create_mock_worksheet_with_duplicates() -> Mock:
@@ -434,12 +445,10 @@ class TestFetchTimeRow:
             {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
         )
 
-        requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row2_requests = [r for r in requests if r["range"] == rowcol_to_a1(FETCH_TIME_ROW, 3)]
-        assert len(row2_requests) == 1
-        value = row2_requests[0]["values"][0][0]
-        assert isinstance(value, str)
-        assert re.fullmatch(r"\d{2}:\d{2}", value)
+        # 行2の値は営業利益の合計になったので、取得時刻は同じセルのノートへ移した
+        notes = sales_ws.update_notes.call_args[0][0]
+        note = notes[rowcol_to_a1(FETCH_TIME_ROW, 3)]
+        assert re.fullmatch(r"取得 \d{2}:\d{2}", note)
 
     def test_rows_1_3_4_still_populated_alongside_row2(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -510,9 +519,8 @@ class TestReservedRowGuard:
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         row2_requests = [r for r in requests if r["range"] == rowcol_to_a1(FETCH_TIME_ROW, 3)]
-        # ASINの個数書き込みがガードで抑止され、取得時刻の1件だけが残る。
-        assert len(row2_requests) == 1
-        assert re.fullmatch(r"\d{2}:\d{2}", row2_requests[0]["values"][0][0])
+        # ASINの個数書き込みがガードで抑止され、行2には何も書かれない
+        assert row2_requests == []
 
     def test_skips_writing_unit_count_when_asin_lands_on_total_amount_row(self) -> None:
         sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(TOTAL_AMOUNT_ROW)
@@ -558,7 +566,7 @@ class TestReservedRowGuard:
 
         # 予約行(行3)のASINは対象から除外され、価格書き込み自体が発生しない。
         assert sales_ws.batch_update.call_count == batch_update_calls_before
-        sales_ws.update_notes.assert_not_called()
+        assert _price_note_calls(sales_ws) == 0
         sales_ws.spreadsheet.batch_update.assert_not_called()
         sales_ws.format.assert_not_called()
 
@@ -613,7 +621,7 @@ class TestWriteGrossProfit:
 
         sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
-        sales_ws.format.assert_called_once_with(
+        assert sales_ws.format.call_args_list[0][0] == (
             [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)],
             {
                 "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8},
@@ -629,7 +637,7 @@ class TestWriteGrossProfit:
 
         sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
-        applied_format = sales_ws.format.call_args[0][1]
+        applied_format = sales_ws.format.call_args_list[0][0][1]
         assert applied_format["numberFormat"] == {"type": "NUMBER", "pattern": "#,##0.0,"}
 
     def test_format_range_has_no_sheet_name_after_batch_update_mutates_requests(
@@ -649,7 +657,7 @@ class TestWriteGrossProfit:
 
         sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
-        formatted_ranges = sales_ws.format.call_args[0][0]
+        formatted_ranges = sales_ws.format.call_args_list[0][0][0]
         assert formatted_ranges == [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)]
         assert all("!" not in cell for cell in formatted_ranges)
 
@@ -716,4 +724,5 @@ class TestWriteGrossProfit:
         assert result.cells_written == 1
         requests = sales_ws.batch_update.call_args_list[0][0][0]
         assert requests[0]["values"] == [[""]]
-        sales_ws.format.assert_not_called()
+        # 黄色は付かない。営業利益の合計だけが書式を受け取る
+        assert all("backgroundColor" not in call[0][1] for call in sales_ws.format.call_args_list)

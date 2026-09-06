@@ -14,6 +14,7 @@ from py_src.infrastructure.sheets.label_rows import (
     find_column,
 )
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
+from py_src.infrastructure.sheets.row_heights import RowHeights
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
@@ -176,6 +177,9 @@ def main() -> None:
     # 実際の書き込みは _apply_label_row_plan が改めて読み直して計画を立て直す（上記コメント参照）。
     labeled_rows = _apply_label_row_plan(worksheet, name_column)
     print(f"ラベル行を {len(labeled_rows)} 行入れました")
+    # 挿入した行は ASIN 行と同じ高さで入る。縮めておかないと1商品が縦に長くなる
+    shrunk = RowHeights(worksheet).shrink_label_rows()
+    print(f"ラベル行 {shrunk} 行の高さを縮めました")
 
 
 if __name__ == "__main__":
