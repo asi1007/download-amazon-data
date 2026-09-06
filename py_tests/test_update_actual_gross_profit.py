@@ -95,7 +95,7 @@ class TestUpdateActualGrossProfit:
         sheet.write_actual_gross_profit.assert_not_called()
         fee_gap_sheet.write.assert_not_called()
 
-    def test_window_covers_14_days_and_excludes_today(self) -> None:
+    def test_window_covers_30_days_and_excludes_today(self) -> None:
         usecase, _, _, sales_repo, orders_repo, _ = _build()
 
         usecase.execute()
@@ -106,7 +106,8 @@ class TestUpdateActualGrossProfit:
         start_date = _parse_utc(start).astimezone(JST).date()
         end_date = _parse_utc(end).astimezone(JST).date()
         assert end_date == datetime.now(JST).date()
-        assert (end_date - start_date).days == 14
+        # 実測は精算単位で約7日遅れる。14日では確定する前に窓から外れる
+        assert (end_date - start_date).days == 30
 
     def test_counts_skus_that_are_not_on_the_sheet(self) -> None:
         usecase, _, _, _, _, _ = _build(

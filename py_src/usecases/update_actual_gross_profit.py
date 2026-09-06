@@ -13,7 +13,12 @@ from py_src.usecases.settle_gross_profit import (
 )
 
 JST = timezone(timedelta(hours=9))
-WINDOW_DAYS = 14
+# 実測は精算期間（settlement）単位で確定するため、出荷から約7日遅れて出てくる。
+# さらに注文日から数日遅れて出荷される分があり、その手数料は次の精算に入る。
+# 窓が短いと、確定する前に対象から外れて永久に埋まらない。実測では 8/23 注文の
+# 149個のうち2個が、10日経っても未計上だった（149個すべて出荷済み）。
+# 30日あれば各日に精算2回分の猶予ができ、古い半分は完全に確定する
+WINDOW_DAYS = 30
 # SP-API は PostedBefore が「リクエストの2分前」より新しいと 400 を返す。
 # 実際に now ちょうどで落ちたので余裕を持たせる
 FINANCES_POSTED_BEFORE_MARGIN = timedelta(minutes=5)
