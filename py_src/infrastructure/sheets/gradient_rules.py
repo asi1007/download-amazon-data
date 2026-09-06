@@ -55,7 +55,7 @@ class GradientRules:
         sheet_id = self._worksheet.id
 
         rules = self._build_rules(sheet_id, asin_values, name_values, first, last)
-        requests = self._delete_existing() + [
+        requests = self._delete_existing(first, last) + [
             {"addConditionalFormatRule": {"rule": rule, "index": index}}
             for index, rule in enumerate(rules)
         ]
@@ -99,18 +99,37 @@ class GradientRules:
                 })
         return rules
 
-    def _delete_existing(self) -> list[dict]:
-        # 付け直しなので古い規則を先に消す。残すと同じ範囲に何重にも積み上がる。
-        # index 0 を消すと後ろが繰り上がるため、常に 0 を指定して件数分送る
+    def _delete_existing(self, first: int, last: int) -> list[dict]:
+        # **自分が入れた規則だけ**を消す。以前は全件削除していたため、シートに
+        # 元からあった条件付き書式（在庫日数の警告など）を巻き込んで消し、
+        # 下地の直接指定が露出した。日付列だけを対象にしたグラデーション規則を
+        # 自分のものと見なす。index を消すと後ろが繰り上がるので降順に消す
         existing = self._worksheet.spreadsheet.fetch_sheet_metadata(
-            {"fields": "sheets(properties(sheetId),conditionalFormats)"}
+            {"fields": "sheets(properties(sheetId),conditionalFormats(ranges,gradientRule))"}
         )
         for sheet in existing.get("sheets", []):
             if sheet.get("properties", {}).get("sheetId") != self._worksheet.id:
                 continue
-            count = len(sheet.get("conditionalFormats", []))
+            mine = [
+                index
+                for index, rule in enumerate(sheet.get("conditionalFormats", []))
+                if _is_own_rule(rule, first, last)
+            ]
             return [
-                {"deleteConditionalFormatRule": {"sheetId": self._worksheet.id, "index": 0}}
-                for _ in range(count)
+                {"deleteConditionalFormatRule": {"sheetId": self._worksheet.id, "index": index}}
+                for index in sorted(mine, reverse=True)
             ]
         return []
+
+
+def _is_own_rule(rule: dict, first: int, last: int) -> bool:
+    if "gradientRule" not in rule:
+        return False
+    ranges = rule.get("ranges", [])
+    if not ranges:
+        return False
+    return all(
+        r.get("startColumnIndex") == first - 1 and r.get("endColumnIndex") == last
+        and r.get("endRowIndex", 0) - r.get("startRowIndex", 0) == 1
+        for r in ranges
+    )

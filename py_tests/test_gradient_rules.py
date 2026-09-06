@@ -67,18 +67,46 @@ class TestGradientRules:
         assert single[0]["gradientRule"]["maxpoint"] == {"color": GREY, "type": "MAX"}
         assert single[0]["ranges"][0]["startRowIndex"] == 6
 
-    def test_existing_rules_are_deleted_first_so_they_do_not_pile_up(self) -> None:
-        worksheet = _worksheet(existing_rules=3)
+    def test_only_own_rules_are_deleted(self) -> None:
+        # 全件削除していたため、シートに元からあった条件付き書式（在庫日数の
+        # 警告など）を巻き込んで消し、下地の直接指定が露出した
+        worksheet = _worksheet()
+        worksheet.spreadsheet.fetch_sheet_metadata.return_value = {
+            "sheets": [{
+                "properties": {"sheetId": 0},
+                "conditionalFormats": [
+                    {"booleanRule": {}, "ranges": [{"startColumnIndex": 18, "endColumnIndex": 19}]},
+                    {"gradientRule": {}, "ranges": [
+                        {"startColumnIndex": 2, "endColumnIndex": 4,
+                         "startRowIndex": 4, "endRowIndex": 5},
+                    ]},
+                    {"gradientRule": {}, "ranges": [{"startColumnIndex": 60, "endColumnIndex": 61}]},
+                ],
+            }]
+        }
+
         GradientRules(worksheet).apply()
 
         requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
-        deletes = [r for r in requests if "deleteConditionalFormatRule" in r]
-        assert len(deletes) == 3
-        # index 0 を消すと後ろが繰り上がるので毎回 0 を指す
-        assert all(r["deleteConditionalFormatRule"]["index"] == 0 for r in deletes)
-        assert requests.index(deletes[-1]) < requests.index(
-            next(r for r in requests if "addConditionalFormatRule" in r)
-        )
+        deletes = [r["deleteConditionalFormatRule"]["index"] for r in requests
+                   if "deleteConditionalFormatRule" in r]
+        assert deletes == [1]
+
+    def test_deletes_go_from_the_back_so_indexes_stay_valid(self) -> None:
+        worksheet = _worksheet()
+        own = {"gradientRule": {}, "ranges": [
+            {"startColumnIndex": 2, "endColumnIndex": 4, "startRowIndex": 4, "endRowIndex": 5},
+        ]}
+        worksheet.spreadsheet.fetch_sheet_metadata.return_value = {
+            "sheets": [{"properties": {"sheetId": 0}, "conditionalFormats": [own, own, own]}]
+        }
+
+        GradientRules(worksheet).apply()
+
+        requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
+        deletes = [r["deleteConditionalFormatRule"]["index"] for r in requests
+                   if "deleteConditionalFormatRule" in r]
+        assert deletes == [2, 1, 0]
 
     def test_no_date_columns_means_no_rules(self) -> None:
         worksheet = _worksheet()
