@@ -35,6 +35,9 @@ TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千
 CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
 PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
 BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
+# 確定したセルは numberFormat だけを書き、backgroundColor は cell 側に
+# 無いので既定（色なし）に戻る。未確定は黄色を書き直す
+SETTLEMENT_FORMAT_FIELDS = "userEnteredFormat(numberFormat,backgroundColor)"
 GROSS_PROFIT_ESTIMATE_FORMAT = {
     "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8},
     "numberFormat": K_YEN_NUMBER_FORMAT,
@@ -329,19 +332,38 @@ class SalesSheet:
 
         if requests:
             # batch_update は渡した dict の "range" を in-place で書き換えるため、
-            # ノートと背景色の対象は先に別のリストへ控えてある
+            # ノートと書式の対象は先に別のリストへ控えてある
+            all_cells = [request["range"] for request in requests]
             self._worksheet.batch_update(requests, value_input_option="RAW")
             self._worksheet.update_notes(notes)
-        if settled_cells:
-            # 黄色は「まだ動く」を表す。全個数に実測が付いた日だけ外す。
-            # 数値書式は userEnteredFormat.backgroundColor だけを消すので残る
-            self._clear_backgrounds(settled_cells)
+            self._apply_settlement_formats(all_cells, set(settled_cells))
         return ActualProfitWriteResult(
             cells_written=len(requests),
             cells_cleared=len(settled_cells),
             skipped_dates=tuple(skipped_dates),
             asins_without_row=tuple(sorted(missing_asins)),
         )
+
+    def _apply_settlement_formats(self, cells: list[str], settled: set[str]) -> None:
+        # 見積を書くのは当日・前日だけなので、それより古いセルは一度も黄色にも
+        # K書式にもなっていない。ここで全セルに付け直さないと色分けが機能しない
+        # （実シートで白い未確定セルと #,##0 のままのセルが出た）
+        sheet_id = self._worksheet.id
+        requests = [
+            {
+                "repeatCell": {
+                    "range": a1_range_to_grid_range(cell, sheet_id),
+                    "cell": {
+                        "userEnteredFormat": {"numberFormat": K_YEN_NUMBER_FORMAT}
+                        if cell in settled
+                        else GROSS_PROFIT_ESTIMATE_FORMAT
+                    },
+                    "fields": SETTLEMENT_FORMAT_FIELDS,
+                }
+            }
+            for cell in cells
+        ]
+        self._worksheet.spreadsheet.batch_update({"requests": requests})
 
     def _gross_profit_rows(self) -> dict[str, list[int]]:
         headers = self._worksheet.row_values(HEADER_ROW)

@@ -55,7 +55,7 @@ class TestWriteActualGrossProfit:
         notes = worksheet.update_notes.call_args[0][0]
         assert notes == {rowcol_to_a1(6, PROFIT_COLUMN): "見積 3,900 / 実測 3,750"}
 
-    def test_clears_the_yellow_background_only_when_fully_settled(self) -> None:
+    def test_settled_cell_loses_the_yellow_but_keeps_the_k_format(self) -> None:
         worksheet = _worksheet()
         sheet = SalesSheet(sales_worksheet=worksheet)
 
@@ -67,19 +67,37 @@ class TestWriteActualGrossProfit:
         })
 
         assert result.cells_cleared == 1
-        cleared = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
-        assert len(cleared) == 1
-        assert cleared[0]["repeatCell"]["range"]["startRowIndex"] == 5
+        requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
+        by_row = {r["repeatCell"]["range"]["startRowIndex"]: r["repeatCell"] for r in requests}
+        settled = by_row[5]["cell"]["userEnteredFormat"]
+        assert settled["numberFormat"] == {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+        assert "backgroundColor" not in settled
 
-    def test_does_not_clear_anything_when_nothing_is_settled(self) -> None:
+    def test_unsettled_cell_is_painted_yellow_even_if_it_never_was(self) -> None:
+        # 見積を書くのは当日・前日だけ。古いセルは一度も黄色になっていないため、
+        # ここで塗り直さないと「白 = 確定」が成り立たない
         worksheet = _worksheet()
         sheet = SalesSheet(sales_worksheet=worksheet)
 
         sheet.write_actual_gross_profit({
-            TARGET_DATE: [ActualProfitCell("B00EXAMPLE", 3750.0, 3900.0, False)],
+            TARGET_DATE: [ActualProfitCell("B00EXAMPLF", 1200.0, 1300.0, False)],
         })
 
-        worksheet.spreadsheet.batch_update.assert_not_called()
+        requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
+        applied = requests[0]["repeatCell"]["cell"]["userEnteredFormat"]
+        assert applied["backgroundColor"] == {"red": 1.0, "green": 0.95, "blue": 0.8}
+        assert applied["numberFormat"] == {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+
+    def test_both_fields_are_rewritten_so_stale_formats_do_not_survive(self) -> None:
+        worksheet = _worksheet()
+        sheet = SalesSheet(sales_worksheet=worksheet)
+
+        sheet.write_actual_gross_profit({
+            TARGET_DATE: [ActualProfitCell("B00EXAMPLE", 3750.0, 3900.0, True)],
+        })
+
+        requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
+        assert requests[0]["repeatCell"]["fields"] == "userEnteredFormat(numberFormat,backgroundColor)"
 
     def test_reports_dates_whose_column_does_not_exist(self) -> None:
         worksheet = _worksheet()
