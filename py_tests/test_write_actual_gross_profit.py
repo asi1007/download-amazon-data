@@ -70,7 +70,7 @@ class TestWriteActualGrossProfit:
         requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
         by_row = {r["repeatCell"]["range"]["startRowIndex"]: r["repeatCell"] for r in requests}
         settled = by_row[5]["cell"]["userEnteredFormat"]
-        assert settled["numberFormat"] == {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+        assert settled["numberFormat"] == {"type": "NUMBER", "pattern": "#,##0.0,"}
         assert "backgroundColor" not in settled
 
     def test_unsettled_cell_is_painted_yellow_even_if_it_never_was(self) -> None:
@@ -86,7 +86,7 @@ class TestWriteActualGrossProfit:
         requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
         applied = requests[0]["repeatCell"]["cell"]["userEnteredFormat"]
         assert applied["backgroundColor"] == {"red": 1.0, "green": 0.95, "blue": 0.8}
-        assert applied["numberFormat"] == {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+        assert applied["numberFormat"] == {"type": "NUMBER", "pattern": "#,##0.0,"}
 
     def test_both_fields_are_rewritten_so_stale_formats_do_not_survive(self) -> None:
         worksheet = _worksheet()

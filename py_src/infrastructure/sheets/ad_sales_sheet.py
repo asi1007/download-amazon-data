@@ -57,7 +57,7 @@ class AdSalesSheet:
             metrics_by_date, columns_by_date, self._ad_cost_rows, attrgetter("cost")
         )
         # batch_update は渡した dict の "range" を in-place でシート名付きに書き換える
-        # (sales_sheet.py の write_gross_profit / write_prices と同じ回避)。K円表記は
+        # (sales_sheet.py の write_gross_profit / write_prices と同じ回避)。千円表記は
         # 広告費の行だけに適用するため、対象範囲を batch_update を呼ぶ前に控えておく。
         cost_cells = [request["range"] for request in cost_requests]
         # 広告費の行が1本も無いのに個数だけ書けてしまうと、終了コードは0のまま

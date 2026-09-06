@@ -186,7 +186,7 @@ class TestAdSalesSheet:
 
         worksheet.format.assert_called_once_with(
             [rowcol_to_a1(8, 3), rowcol_to_a1(16, 3), rowcol_to_a1(12, 3)],
-            {"numberFormat": {"type": "NUMBER", "pattern": '#,##0.0,"K"'}},
+            {"numberFormat": {"type": "NUMBER", "pattern": "#,##0.0,"}},
         )
 
     def test_format_range_has_no_sheet_name_after_batch_update_mutates_requests(self) -> None:

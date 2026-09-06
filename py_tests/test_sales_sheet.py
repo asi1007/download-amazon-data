@@ -617,20 +617,20 @@ class TestWriteGrossProfit:
             [rowcol_to_a1(6, GROSS_PROFIT_COLUMN)],
             {
                 "backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8},
-                "numberFormat": {"type": "NUMBER", "pattern": '#,##0.0,"K"'},
+                "numberFormat": {"type": "NUMBER", "pattern": "#,##0.0,"},
             },
         )
 
     def test_applies_k_number_format_alongside_the_background(self) -> None:
-        # K円表記(1,240 -> "1.2K")を要求されたのは、整数の `#,##0,"K"` だと
-        # 広告費がほぼ0Kに潰れて見えなくなったため。小数点1桁で合意している。
+        # 千円単位・小数点1桁（1,240 -> "1.2"）。整数だと1日あたり数百円の
+        # 広告費が 0 に潰れて見えなくなる。単位の文字は付けない
         sales_ws = _create_mock_worksheet_for_gross_profit()
         sheet = SalesSheet(sales_worksheet=sales_ws)
 
         sheet.write_gross_profit({"B00EXAMPLE": 1200.0}, TARGET_DATE)
 
         applied_format = sales_ws.format.call_args[0][1]
-        assert applied_format["numberFormat"] == {"type": "NUMBER", "pattern": '#,##0.0,"K"'}
+        assert applied_format["numberFormat"] == {"type": "NUMBER", "pattern": "#,##0.0,"}
 
     def test_format_range_has_no_sheet_name_after_batch_update_mutates_requests(
         self,
