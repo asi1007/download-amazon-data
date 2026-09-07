@@ -16,7 +16,11 @@ from py_src.infrastructure.sheets.label_rows import ROW_LABELS_IN_ORDER
 def _worksheet(existing_rules: int = 0) -> Mock:
     worksheet = Mock(spec=Worksheet)
     worksheet.id = 0
-    worksheet.row_values.return_value = ["ASIN", "商品名", 46269, 46268]
+    worksheet.row_count = 400
+    worksheet.row_values.side_effect = lambda row, **kwargs: (
+        ["ASIN_SELL", "", "", "", "PROFIT_RATE"] if row == 1
+        else ["ASIN", "商品名", 46269, 46268]
+    )
     col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", "", "B00EXAMPLF", "", "", "", ""]
     labels = list(ROW_LABELS_IN_ORDER)
     col_name = ["", "", "", "商品名", "ルーペ"] + labels + ["ボール"] + labels
@@ -26,6 +30,22 @@ def _worksheet(existing_rules: int = 0) -> Mock:
                     "conditionalFormats": [{} for _ in range(existing_rules)]}]
     }
     return worksheet
+
+
+def _operating_rules(worksheet: Mock) -> list[dict]:
+    return [r for r in _rules(worksheet)
+            if "gradientRule" in r and r["ranges"][0].get("endRowIndex") != 400
+            and r["gradientRule"]["minpoint"].get("type") == "NUMBER"]
+
+
+def _operating_gradient(worksheet: Mock) -> dict:
+    return _operating_rules(worksheet)[0]["gradientRule"]
+
+
+def _count_rules(worksheet: Mock) -> list[dict]:
+    return [r for r in _rules(worksheet)
+            if "gradientRule" in r and r["gradientRule"]["minpoint"].get("type") == "MIN"
+            and r["ranges"][0].get("endRowIndex") != 400]
 
 
 def _rules(worksheet: Mock) -> list[dict]:
@@ -40,9 +60,8 @@ class TestGradientRules:
         # 以外がすべて同じ色になる
         worksheet = _worksheet()
 
-        assert GradientRules(worksheet).apply() == 3
-        count_rules = [r for r in _rules(worksheet)
-                       if "midpoint" not in r["gradientRule"]]
+        assert GradientRules(worksheet).apply() == 5
+        count_rules = _count_rules(worksheet)
         assert len(count_rules) == 2
         assert all(len(r["ranges"]) == 2 for r in count_rules)
 
@@ -50,7 +69,7 @@ class TestGradientRules:
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
-        ranges = _rules(worksheet)[0]["ranges"]
+        ranges = _count_rules(worksheet)[0]["ranges"]
         # ASIN行（0起点で4）と広告経由行。並べ替え後は隣り合っていない
         assert [r["startRowIndex"] for r in ranges] == [4, 6]
         assert ranges[0]["startColumnIndex"] == 2
@@ -61,22 +80,21 @@ class TestGradientRules:
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
-        gradient = _rules(worksheet)[0]["gradientRule"]
+        gradient = _count_rules(worksheet)[0]["gradientRule"]
         assert gradient["minpoint"] == {"color": PALE_RED, "type": "MIN"}
         assert gradient["maxpoint"] == {"color": PALE_BLUE, "type": "MAX"}
 
-    def test_operating_profit_pins_zero_to_white_in_a_deep_tone(self) -> None:
-        # MIN を白にすると「最も赤字の日」が白になり、黒字か赤字かが色から読めない
+    def test_operating_profit_turns_blue_only_above_the_threshold(self) -> None:
+        # 0 から振ると数百円の差で全体がうっすら青くなり、差が読めない
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
-        operating = [r for r in _rules(worksheet)
-                     if r["gradientRule"].get("midpoint", {}).get("value") == "0"]
-        gradient = operating[0]["gradientRule"]
-        assert gradient["minpoint"] == {"color": DEEP_RED, "type": "MIN"}
-        assert gradient["midpoint"] == {"color": WHITE, "type": "NUMBER", "value": "0"}
+        gradient = _operating_gradient(worksheet)
+        assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "1000"}
         assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "MAX"}
+        assert "midpoint" not in gradient
         # 全商品を1つの規則にまとめる。金額そのものを商品間で比べられる
+        operating = _operating_rules(worksheet)
         assert len(operating) == 1
         assert [r["startRowIndex"] for r in operating[0]["ranges"]] == [5, 10]
 
@@ -123,6 +141,79 @@ class TestGradientRules:
 
     def test_no_date_columns_means_no_rules(self) -> None:
         worksheet = _worksheet()
-        worksheet.row_values.return_value = ["ASIN", "商品名"]
+        worksheet.row_values.side_effect = lambda row, **kwargs: ["ASIN", "商品名"]
 
         assert GradientRules(worksheet).apply() == 0
+
+
+class TestColumnGradients:
+    def test_profit_rate_column_is_pinned_to_zero(self) -> None:
+        # 4行目のヘッダーは "Column 133" のような自動採番なので1行目のキーで引く
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        column_rules = [r for r in _rules(worksheet)
+                        if "gradientRule" in r and r["ranges"][0].get("endRowIndex") == 400]
+        assert len(column_rules) == 1
+        grid = column_rules[0]["ranges"][0]
+        assert grid["startColumnIndex"] == 4
+        assert grid["endColumnIndex"] == 5
+        gradient = column_rules[0]["gradientRule"]
+        assert gradient["minpoint"] == {"color": DEEP_RED, "type": "MIN"}
+        assert gradient["midpoint"] == {"color": WHITE, "type": "NUMBER", "value": "0"}
+        assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "MAX"}
+
+    def test_own_column_rule_is_replaced_not_duplicated(self) -> None:
+        worksheet = _worksheet()
+        worksheet.spreadsheet.fetch_sheet_metadata.return_value = {
+            "sheets": [{"properties": {"sheetId": 0}, "conditionalFormats": [
+                {"gradientRule": {}, "ranges": [
+                    {"startColumnIndex": 4, "endColumnIndex": 5,
+                     "startRowIndex": 4, "endRowIndex": 400},
+                ]},
+                {"booleanRule": {}, "ranges": [{"startColumnIndex": 4, "endColumnIndex": 5}]},
+            ]}]
+        }
+
+        GradientRules(worksheet).apply()
+
+        requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
+        deletes = [r["deleteConditionalFormatRule"]["index"] for r in requests
+                   if "deleteConditionalFormatRule" in r]
+        assert deletes == [0]
+
+
+class TestNegativeOperatingProfit:
+    def test_below_zero_gets_the_strongest_format(self) -> None:
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        rules = _rules(worksheet)
+        critical = [r for r in rules if "booleanRule" in r]
+        assert len(critical) == 1
+        condition = critical[0]["booleanRule"]["condition"]
+        # 0 は含めない。売れなかった日の 0 が大半で、赤くしても打つ手が無い
+        assert condition["type"] == "NUMBER_LESS"
+        assert condition["values"][0]["userEnteredValue"] == "0"
+        assert critical[0]["booleanRule"]["format"]["textFormat"]["bold"] is True
+
+    def test_it_is_placed_above_the_gradient_so_it_wins(self) -> None:
+        # 条件付き書式は上にある規則が勝つ
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        rules = _rules(worksheet)
+        critical = next(i for i, r in enumerate(rules) if "booleanRule" in r)
+        gradient = next(
+            i for i, r in enumerate(rules)
+            if r.get("gradientRule", {}).get("minpoint", {}).get("value") == "1000"
+        )
+        assert critical < gradient
+
+    def test_it_covers_the_same_rows_as_the_gradient(self) -> None:
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        rules = _rules(worksheet)
+        critical = next(r for r in rules if "booleanRule" in r)
+        assert [r["startRowIndex"] for r in critical["ranges"]] == [5, 10]

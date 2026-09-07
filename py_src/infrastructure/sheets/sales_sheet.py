@@ -33,7 +33,13 @@ TOTAL_AMOUNT_ROW = 3
 FETCH_TIME_ROW = 2
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
-TOTAL_AMOUNT_FORMAT = {"numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}}
+# 行2（営業利益の合計）と行3（総売上）。千円単位で表示するが単位の文字は付けない
+# （数字と単位が混ざると桁が読み取りにくい）。日付ラベルより一段小さくする
+SUMMARY_FONT_SIZE = 8
+TOTAL_AMOUNT_FORMAT = {
+    "numberFormat": {"type": "NUMBER", "pattern": "#,##0,"},
+    "textFormat": {"fontSize": SUMMARY_FONT_SIZE},
+}
 CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
 PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
 BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
@@ -51,6 +57,7 @@ def apply_column_formats(worksheet: Worksheet, col: int) -> None:
         [
             {"range": rowcol_to_a1(1, col), "format": DATE_LABEL_FORMAT},
             {"range": rowcol_to_a1(HEADER_ROW, col), "format": DATE_LABEL_FORMAT},
+            {"range": rowcol_to_a1(FETCH_TIME_ROW, col), "format": TOTAL_AMOUNT_FORMAT},
             {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "format": TOTAL_AMOUNT_FORMAT},
         ]
     )
@@ -442,7 +449,7 @@ class SalesSheet:
             return 0
         cells = [request["range"] for request in requests]
         self._worksheet.batch_update(requests, value_input_option="USER_ENTERED")
-        self._worksheet.format(cells, {"numberFormat": TOTAL_AMOUNT_FORMAT["numberFormat"]})
+        self._worksheet.format(cells, TOTAL_AMOUNT_FORMAT)
         return len(requests)
 
     def _gross_profit_rows(self) -> dict[str, list[int]]:

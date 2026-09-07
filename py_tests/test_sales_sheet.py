@@ -108,7 +108,8 @@ class TestSalesSheet:
         formats = sales_ws.batch_format.call_args[0][0]
         applied = {f["range"]: f["format"] for f in formats}
         assert applied[rowcol_to_a1(3, 3)] == {
-            "numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}
+            "numberFormat": {"type": "NUMBER", "pattern": "#,##0,"},
+            "textFormat": {"fontSize": 8},
         }
 
     def test_write_sales_nums_keeps_total_amount_in_yen(self) -> None:

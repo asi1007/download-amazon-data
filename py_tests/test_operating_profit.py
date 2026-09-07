@@ -138,6 +138,6 @@ class TestOperatingProfitTotals:
 
         sheet.write_operating_profit_totals([3])
 
-        assert worksheet.format.call_args[0][1] == {
-            "numberFormat": {"type": "NUMBER", "pattern": '#,##0,"千円"'}
-        }
+        applied = worksheet.format.call_args[0][1]
+        assert applied["numberFormat"] == {"type": "NUMBER", "pattern": "#,##0,"}
+        assert applied["textFormat"]["fontSize"] == 8
