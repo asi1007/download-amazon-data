@@ -91,7 +91,9 @@ class TestGradientRules:
 
         gradient = _operating_gradient(worksheet)
         assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "1000"}
-        assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "MAX"}
+        # 上限も固定する。MAX だと外れ値（最大49,580円）に引っ張られ、
+        # 中央値 2,811円 が 3.7% の位置になってほぼ白に潰れる
+        assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "NUMBER", "value": "10000"}
         assert "midpoint" not in gradient
         # 全商品を1つの規則にまとめる。金額そのものを商品間で比べられる
         operating = _operating_rules(worksheet)
