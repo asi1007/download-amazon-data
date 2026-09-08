@@ -9,6 +9,7 @@ from py_src.infrastructure.sheets.label_rows import (
     HEADER_ROW,
     OPERATING_PROFIT_ROW_LABEL,
     PRODUCT_NAME_HEADER,
+    RANK_ROW_LABEL,
     ROW_LABELS_IN_ORDER,
     bind_label_rows,
     find_column,
@@ -127,6 +128,7 @@ class GradientRules:
         )
         ad_offset = ROW_LABELS_IN_ORDER.index(AD_ROW_LABEL)
         operating_offset = ROW_LABELS_IN_ORDER.index(OPERATING_PROFIT_ROW_LABEL)
+        rank_offset = ROW_LABELS_IN_ORDER.index(RANK_ROW_LABEL)
         rules: list[dict] = []
         operating_ranges: list[dict] = []
         for rows in first_label_rows.values():
@@ -150,6 +152,17 @@ class GradientRules:
                     sheet_id, first_label + operating_offset, first, last
                 )
                 operating_ranges.append(operating_range)
+                # 順位は小さいほど良い。MIN（最上位）を青、MAX（最下位）を赤にする。
+                # 個数と同じうすい色にして、行の種類は位置で見分ける
+                rules.append({
+                    "ranges": [
+                        _grid_range(sheet_id, first_label + rank_offset, first, last)
+                    ],
+                    "gradientRule": {
+                        "minpoint": {"color": PALE_BLUE, "type": "MIN"},
+                        "maxpoint": {"color": PALE_RED, "type": "MAX"},
+                    },
+                })
                 rules.append({
                     "ranges": [operating_range],
                     "gradientRule": _gradient_from_zero(DEEP_BLUE),
