@@ -1,10 +1,11 @@
 import re
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import Mock
 from gspread import Worksheet
 from gspread.utils import rowcol_to_a1
 from py_src.infrastructure.sheets.label_rows import GROSS_PROFIT_ROW_LABEL, date_serial
 from py_src.infrastructure.sheets.sales_sheet import (
+    JST,
     SalesSheet,
     FETCH_TIME_ROW,
     HEADER_ROW,
@@ -447,13 +448,39 @@ class TestFetchTimeRow:
         sheet.get_asin_list()
 
         sheet.write_sales_nums(
-            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)}
+            {"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0)},
+            target_date=datetime.now(JST).date(),
         )
 
-        # 行2の値は営業利益の合計になったので、取得時刻は同じセルのノートへ移した
-        notes = sales_ws.update_notes.call_args[0][0]
-        note = notes[rowcol_to_a1(FETCH_TIME_ROW, 3)]
-        assert re.fullmatch(r"取得 \d{2}:\d{2}", note)
+        # 日付列は毎日増えるので、取得時刻は動かない「目標販売数」列の行2へ書く。
+        # ノートに隠すと開かないと読めない
+        requests = sales_ws.batch_update.call_args[0][0]
+        cell = rowcol_to_a1(FETCH_TIME_ROW, 2)
+        written = [r for r in requests if r["range"] == cell]
+        assert len(written) == 1
+        assert re.fullmatch(r"取得 \d{2}:\d{2}", written[0]["values"][0][0])
+
+    def test_does_not_write_fetch_time_for_a_past_date(self) -> None:
+        # バックフィルで過去日を書いても「今日の更新時刻」を壊さない
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({}, target_date=date(2026, 7, 1))
+
+        requests = sales_ws.batch_update.call_args[0][0]
+        cell = rowcol_to_a1(FETCH_TIME_ROW, 2)
+        assert [r for r in requests if r["range"] == cell] == []
+
+    def test_does_not_hide_the_fetch_time_in_a_note(self) -> None:
+        sales_ws = _create_mock_worksheet()
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        sheet.write_sales_nums({})
+
+        for call in sales_ws.update_notes.call_args_list:
+            assert not any(str(v).startswith("取得") for v in call[0][0].values())
 
     def test_rows_1_3_4_still_populated_alongside_row2(self) -> None:
         sales_ws = _create_mock_worksheet()

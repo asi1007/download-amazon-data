@@ -162,12 +162,16 @@ class SalesSheet:
                 {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "values": [[total_amount]]}
             )
 
+        # 当日列は毎時上書きされるため、いつ時点の数字かが分からないと読めない。
+        # 日付列は毎日増えて位置が動くので、取得時刻は動かない「目標販売数」列の
+        # 行2へ書く。過去日のバックフィルでは書かない（今日の更新時刻が壊れる）
+        if target_date == datetime.now(JST).date():
+            requests.append({
+                "range": rowcol_to_a1(FETCH_TIME_ROW, self._start_column - 1),
+                "values": [[f"取得 {_fetch_time_label()}"]],
+            })
+
         self._worksheet.batch_update(requests, value_input_option="RAW")
-        # 行2は営業利益の合計。取得時刻は同じセルのノートへ入れる（当日列は毎時
-        # 上書きされるため、いつ時点の数字かが分からないと読めない）
-        self._worksheet.update_notes(
-            {rowcol_to_a1(FETCH_TIME_ROW, col): f"取得 {_fetch_time_label()}"}
-        )
         apply_column_formats(self._worksheet, col)
 
     def _resolve_column_for(self, date_serial: int) -> int:
