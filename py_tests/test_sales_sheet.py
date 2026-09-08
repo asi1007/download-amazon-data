@@ -177,8 +177,12 @@ class TestSalesSheet:
         sales_ws.batch_update.assert_called()
 
 
-CHEAPER_COLOR = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
-PRICIER_COLOR = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
+CHEAPER_COLOR = {
+    "textFormat": {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "bold": True}
+}
+PRICIER_COLOR = {
+    "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.2, "blue": 0.8}, "bold": True}
+}
 
 
 def _colored_cells(sales_ws: Mock, color: dict) -> set[str]:
@@ -214,7 +218,7 @@ class TestPriceChangeColoring:
         assert _colored_cells(sales_ws, CHEAPER_COLOR) == set()
         assert _colored_cells(sales_ws, PRICIER_COLOR) == set()
 
-    def test_clears_background_of_cells_without_price_change(self) -> None:
+    def test_resets_style_of_cells_without_price_change(self) -> None:
         sales_ws = _create_mock_worksheet()
         sales_ws.get_notes.return_value = [[""], [""], [""], [""], ["2800"], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
@@ -223,11 +227,11 @@ class TestPriceChangeColoring:
 
         sheet.write_prices({"B00EXAMPLE": 2800.0, "B00EXAMPLF": 3500.0})
 
-        cleared = _cleared_background_ranges(sales_ws)
+        cleared = _reset_ranges(sales_ws)
         assert rowcol_to_a1(5, 3) in cleared
         assert rowcol_to_a1(6, 3) in cleared
 
-    def test_clears_background_before_applying_new_color(self) -> None:
+    def test_resets_style_before_applying_new_color(self) -> None:
         sales_ws = _create_mock_worksheet()
         sales_ws.get_notes.return_value = [[""], [""], [""], [""], ["2800"]]
         sheet = SalesSheet(sales_worksheet=sales_ws)
@@ -240,14 +244,14 @@ class TestPriceChangeColoring:
         assert sales_ws.format.called
 
 
-def _cleared_background_ranges(sales_ws: Mock) -> set[str]:
+def _reset_ranges(sales_ws: Mock) -> set[str]:
     cleared: set[str] = set()
     for call in sales_ws.spreadsheet.batch_update.call_args_list:
         for request in call[0][0]["requests"]:
             repeat_cell = request.get("repeatCell")
             if not repeat_cell:
                 continue
-            if repeat_cell["fields"] != "userEnteredFormat.backgroundColor":
+            if "userEnteredFormat.textFormat.foregroundColor" not in repeat_cell["fields"]:
                 continue
             grid = repeat_cell["range"]
             cleared.add(
@@ -727,3 +731,97 @@ class TestWriteGrossProfit:
         assert requests[0]["values"] == [[""]]
         # 黄色は付かない。営業利益の合計だけが書式を受け取る
         assert all("backgroundColor" not in call[0][1] for call in sales_ws.format.call_args_list)
+
+
+def _create_dated_mock_worksheet() -> Mock:
+    # 日付列（行4に日付シリアル）を持つ実運用の並びを再現する。書式付きで読むと
+    # 日付は "dd" 表示の文字列、unformatted で読むとシリアル整数で返る
+    sales_ws = Mock()
+
+    def row_values(row: int, value_render_option: object = None) -> list:
+        if value_render_option is None:
+            return ["ASIN", "自社価格", "目標販売数", "07", "06"]
+        return ["ASIN", "自社価格", "目標販売数", 46272, 46271]
+
+    sales_ws.row_values.side_effect = row_values
+    sales_ws.col_values.return_value = [
+        "header", "", "合計", "header4",
+        "B00EXAMPLE", "B00EXAMPLF", "", "header2", "B00EXAMPLG",
+    ]
+    return sales_ws
+
+
+class TestRecolorPriceChanges:
+    def test_repaints_past_columns_from_recorded_notes(self) -> None:
+        sales_ws = _create_dated_mock_worksheet()
+        sales_ws.get_notes.return_value = [
+            [], [], [], [],
+            ["", "", "", "3500", "2800"],
+            ["", "", "", "2000", "2800"],
+            [],
+            [],
+            ["", "", "", "2800", "2800"],
+        ]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        result = sheet.recolor_price_changes()
+
+        assert _colored_cells(sales_ws, PRICIER_COLOR) == {rowcol_to_a1(5, 4)}
+        assert _colored_cells(sales_ws, CHEAPER_COLOR) == {rowcol_to_a1(6, 4)}
+        assert result.unchanged == [rowcol_to_a1(9, 4)]
+
+    def test_leaves_unchanged_cells_untouched(self) -> None:
+        # 変化なしのセルを塗り直しでクリアすると、手で付けた色まで消える。
+        # 当日列を毎回書き直す write_prices と違い、過去列は自動管理下にない
+        sales_ws = _create_dated_mock_worksheet()
+        sales_ws.get_notes.return_value = [
+            [], [], [], [],
+            ["", "", "", "3500", "2800"],
+            [],
+            [],
+            [],
+            ["", "", "", "2800", "2800"],
+        ]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        result = sheet.recolor_price_changes()
+
+        assert result.unchanged == [rowcol_to_a1(9, 4)]
+        assert rowcol_to_a1(9, 4) not in _reset_ranges(sales_ws)
+
+    def test_leaves_cells_without_recorded_price_alone(self) -> None:
+        sales_ws = _create_dated_mock_worksheet()
+        sales_ws.get_notes.return_value = [[], [], [], [], ["", "", "", "3500", ""]]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        result = sheet.recolor_price_changes()
+
+        assert result.pricier == []
+        assert result.cheaper == []
+        assert result.unchanged == []
+        assert sales_ws.format.call_args_list == []
+        assert _reset_ranges(sales_ws) == set()
+
+    def test_classify_price_changes_writes_nothing(self) -> None:
+        sales_ws = _create_dated_mock_worksheet()
+        sales_ws.get_notes.return_value = [
+            [], [], [], [],
+            ["", "", "", "3500", "2800"],
+            ["", "", "", "2000", "2800"],
+            [],
+            [],
+            ["", "", "", "2800", "2800"],
+        ]
+        sheet = SalesSheet(sales_worksheet=sales_ws)
+        sheet.get_asin_list()
+
+        result = sheet.classify_price_changes()
+
+        assert result.pricier == [rowcol_to_a1(5, 4)]
+        assert result.cheaper == [rowcol_to_a1(6, 4)]
+        assert result.unchanged == [rowcol_to_a1(9, 4)]
+        assert sales_ws.format.call_args_list == []
+        assert _reset_ranges(sales_ws) == set()

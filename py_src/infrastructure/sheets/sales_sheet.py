@@ -23,6 +23,10 @@ from py_src.infrastructure.sheets.label_rows import (
     find_column as find_label_column,
     read_date_columns,
 )
+from py_src.infrastructure.sheets.price_change_colors import (
+    PriceChangeCells,
+    classify_price_changes as classify_from_notes,
+)
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 JST = timezone(timedelta(hours=9))
@@ -40,9 +44,25 @@ TOTAL_AMOUNT_FORMAT = {
     "numberFormat": {"type": "NUMBER", "pattern": "#,##0,"},
     "textFormat": {"fontSize": SUMMARY_FONT_SIZE},
 }
-CHEAPER_FORMAT = {"backgroundColor": {"red": 1, "green": 0, "blue": 0}}
-PRICIER_FORMAT = {"backgroundColor": {"red": 0, "green": 1, "blue": 1}}
-BACKGROUND_COLOR_FIELD = "userEnteredFormat.backgroundColor"
+# 値下げは赤、値上げは青。背景色ではなく文字色で塗る。売上個数セルには
+# 個数の多寡を表すカラースケール（apply_gradients.py）が掛かっており、
+# 条件付き書式は直接指定の背景色を上書きするため、背景に塗っても見えない
+CHEAPER_FORMAT = {
+    "textFormat": {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "bold": True}
+}
+PRICIER_FORMAT = {
+    "textFormat": {"foregroundColor": {"red": 0.0, "green": 0.2, "blue": 0.8}, "bold": True}
+}
+# 価格変動の塗り分けだけを消す。フォントサイズなど他の書式は残す
+PRICE_CHANGE_STYLE_FIELDS = (
+    "userEnteredFormat.backgroundColor,"
+    "userEnteredFormat.textFormat.foregroundColor,"
+    "userEnteredFormat.textFormat.foregroundColorStyle,"
+    "userEnteredFormat.textFormat.bold"
+)
+# 塗り直しは全日付列×全ASINを対象にするため数千セルになる。1リクエストに
+# 詰めるとペイロードが膨らんで 400 が返るので分割して送る
+FORMAT_CHUNK_SIZE = 500
 # 確定したセルは numberFormat だけを書き、backgroundColor は cell 側に
 # 無いので既定（色なし）に戻る。未確定は黄色を書き直す
 SETTLEMENT_FORMAT_FIELDS = "userEnteredFormat(numberFormat,backgroundColor)"
@@ -240,24 +260,56 @@ class SalesSheet:
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
         self._worksheet.update_notes(notes)
-        self._clear_backgrounds(written_cells)
+        self._reset_price_change_style(written_cells)
         if cheaper:
             self._worksheet.format(cheaper, CHEAPER_FORMAT)
         if pricier:
             self._worksheet.format(pricier, PRICIER_FORMAT)
 
-    def _clear_backgrounds(self, cells: list[str]) -> None:
-        sheet_id = self._worksheet.id
-        requests = [
-            {
-                "repeatCell": {
-                    "range": a1_range_to_grid_range(cell, sheet_id),
-                    "fields": BACKGROUND_COLOR_FIELD,
-                }
-            }
-            for cell in cells
+    # 価格は書き込み当時に売上個数セルのノートへ残してある。過去の列も
+    # そのノートだけで塗り分けを再現できる（当時の価格を取り直す必要がない）
+    def classify_price_changes(self) -> PriceChangeCells:
+        return classify_from_notes(
+            self._worksheet.get_notes(),
+            self._asin_rows(),
+            read_date_columns(self._worksheet),
+        )
+
+    # 変化なしのセルは塗らないだけで、既にある背景は消さない。当日列を毎回
+    # 書き直す write_prices と違い、過去列は手で色を付けている可能性がある
+    @retry_on_transient_error
+    def recolor_price_changes(self) -> PriceChangeCells:
+        cells = self.classify_price_changes()
+        self._reset_price_change_style(cells.cheaper + cells.pricier)
+        self._apply_style(cells.cheaper, CHEAPER_FORMAT)
+        self._apply_style(cells.pricier, PRICIER_FORMAT)
+        return cells
+
+    def _asin_rows(self) -> list[int]:
+        return [
+            row
+            for asin in self._asin_list
+            for row in self._asin_to_rows[asin]
+            if row > HEADER_ROW
         ]
-        self._worksheet.spreadsheet.batch_update({"requests": requests})
+
+    def _apply_style(self, cells: list[str], cell_format: dict) -> None:
+        for chunk in _in_chunks(cells):
+            self._worksheet.format(chunk, cell_format)
+
+    def _reset_price_change_style(self, cells: list[str]) -> None:
+        sheet_id = self._worksheet.id
+        for chunk in _in_chunks(cells):
+            requests = [
+                {
+                    "repeatCell": {
+                        "range": a1_range_to_grid_range(cell, sheet_id),
+                        "fields": PRICE_CHANGE_STYLE_FIELDS,
+                    }
+                }
+                for cell in chunk
+            ]
+            self._worksheet.spreadsheet.batch_update({"requests": requests})
 
     @retry_on_transient_error
     def write_gross_profit(
@@ -472,6 +524,10 @@ class SalesSheet:
             except ValueError:
                 continue
         return result
+
+
+def _in_chunks(cells: list[str], size: int = FORMAT_CHUNK_SIZE) -> list[list[str]]:
+    return [cells[i:i + size] for i in range(0, len(cells), size)]
 
 
 def _estimate_note(cell: ActualProfitCell) -> str:

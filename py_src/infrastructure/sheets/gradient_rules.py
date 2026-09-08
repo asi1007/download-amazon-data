@@ -40,18 +40,14 @@ def _gradient(minimum: dict, maximum: dict) -> dict:
     }
 
 
-BLUE_FROM_YEN = 1000
-# 上限も固定する。MAX にすると外れ値に引っ張られて大半が白に潰れる
-# （1000円超599セルの中央値 2,811円 に対し最大 49,580円 で、中央値は 3.7% の位置）
-BLUE_FULL_AT_YEN = 10000
-
-
-def _gradient_between(low: int, high: int, maximum: dict) -> dict:
-    # low までは白のまま。そこから high までを青に振る。日々の営業利益は
-    # 数百円の差が大量にあり、0 から振ると全体がうっすら青くなって差が読めない
+def _gradient_from_zero(maximum: dict) -> dict:
+    # 0円を白に固定し、その商品の最大益を青にする。金額で上限を固定すると
+    # 規模の小さい商品が好調な日でも白のままになり、その商品の中での
+    # 良し悪しが読めない。0 を白にするのは、MIN を白にすると最も薄利な日が
+    # 白になって黒字か赤字かが色から読めなくなるため
     return {
-        "minpoint": {"color": WHITE, "type": "NUMBER", "value": str(low)},
-        "maxpoint": {"color": maximum, "type": "NUMBER", "value": str(high)},
+        "minpoint": {"color": WHITE, "type": "NUMBER", "value": "0"},
+        "maxpoint": {"color": maximum, "type": "MAX"},
     }
 
 
@@ -147,12 +143,17 @@ class GradientRules:
                     ],
                     "gradientRule": _gradient(PALE_RED, PALE_BLUE),
                 })
-                operating_ranges.append(
-                    _grid_range(sheet_id, first_label + operating_offset, first, last)
+                # 営業利益も個数と同じく商品ごとのスケールにする。商品ごとに
+                # 桁が違うため、1つのスケールに載せると規模の小さい商品が
+                # すべて白に潰れる
+                operating_range = _grid_range(
+                    sheet_id, first_label + operating_offset, first, last
                 )
-        # 営業利益は全商品で1つのスケールにする。0円を白に固定してあるので、
-        # 同じ金額なら商品をまたいで同じ色になり、金額そのものを比べられる。
-        # 個数は商品ごとに桁が違うため、こちらは商品ごとのスケールのままにする
+                operating_ranges.append(operating_range)
+                rules.append({
+                    "ranges": [operating_range],
+                    "gradientRule": _gradient_from_zero(DEEP_BLUE),
+                })
         if operating_ranges:
             # 0 以下の判定を先に入れる。後ろのグラデーションは残りの日に効く
             rules.insert(0, {
@@ -164,10 +165,6 @@ class GradientRules:
                     },
                     "format": NEGATIVE_PROFIT_FORMAT,
                 },
-            })
-            rules.append({
-                "ranges": operating_ranges,
-                "gradientRule": _gradient_between(BLUE_FROM_YEN, BLUE_FULL_AT_YEN, DEEP_BLUE),
             })
         return rules
 

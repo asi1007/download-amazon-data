@@ -60,7 +60,8 @@ class TestGradientRules:
         # 以外がすべて同じ色になる
         worksheet = _worksheet()
 
-        assert GradientRules(worksheet).apply() == 5
+        # 商品2件 × (個数1本 + 営業利益1本) + 赤字の判定1本 + 利益率の列1本
+        assert GradientRules(worksheet).apply() == 6
         count_rules = _count_rules(worksheet)
         assert len(count_rules) == 2
         assert all(len(r["ranges"]) == 2 for r in count_rules)
@@ -84,21 +85,26 @@ class TestGradientRules:
         assert gradient["minpoint"] == {"color": PALE_RED, "type": "MIN"}
         assert gradient["maxpoint"] == {"color": PALE_BLUE, "type": "MAX"}
 
-    def test_operating_profit_turns_blue_only_above_the_threshold(self) -> None:
-        # 0 から振ると数百円の差で全体がうっすら青くなり、差が読めない
+    def test_operating_profit_scales_per_product(self) -> None:
+        # 商品ごとに営業利益の桁が違う。金額で上限を固定すると、規模の小さい
+        # 商品は好調な日でも白のままになり、その商品の中での良し悪しが読めない
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
         gradient = _operating_gradient(worksheet)
-        assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "1000"}
-        # 上限も固定する。MAX だと外れ値（最大49,580円）に引っ張られ、
-        # 中央値 2,811円 が 3.7% の位置になってほぼ白に潰れる
-        assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "NUMBER", "value": "10000"}
+        # 0円は白に固定する。MIN を白にすると最も薄利な日が白になり、
+        # 黒字か赤字かが色から読めない
+        assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "0"}
+        assert gradient["maxpoint"] == {"color": DEEP_BLUE, "type": "MAX"}
         assert "midpoint" not in gradient
-        # 全商品を1つの規則にまとめる。金額そのものを商品間で比べられる
+
+    def test_operating_profit_rule_is_separate_per_product(self) -> None:
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
         operating = _operating_rules(worksheet)
-        assert len(operating) == 1
-        assert [r["startRowIndex"] for r in operating[0]["ranges"]] == [5, 10]
+        assert [r["ranges"][0]["startRowIndex"] for r in operating] == [5, 10]
+        assert all(len(r["ranges"]) == 1 for r in operating)
 
     def test_only_own_rules_are_deleted(self) -> None:
         # 全件削除していたため、シートに元からあった条件付き書式（在庫日数の
@@ -208,7 +214,7 @@ class TestNegativeOperatingProfit:
         critical = next(i for i, r in enumerate(rules) if "booleanRule" in r)
         gradient = next(
             i for i, r in enumerate(rules)
-            if r.get("gradientRule", {}).get("minpoint", {}).get("value") == "1000"
+            if r.get("gradientRule", {}).get("minpoint", {}).get("value") == "0"
         )
         assert critical < gradient
 
