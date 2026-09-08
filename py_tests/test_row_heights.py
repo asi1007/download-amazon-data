@@ -15,15 +15,15 @@ class TestPlanRowHeights:
     def test_asin_row_keeps_full_height_and_labels_take_half(self) -> None:
         assert plan_row_heights({"B00EXAMPLE": [8]}) == [
             (7, 7, ASIN_ROW_HEIGHT),
-            (8, 11, LABEL_ROW_HEIGHT),
+            (8, 12, LABEL_ROW_HEIGHT),
         ]
 
     def test_block_is_anchored_on_the_first_label_not_on_a_fixed_label(self) -> None:
         # 「広告経由の1つ上が ASIN 行」と決め打つと、並べ替えたときに次の商品の
         # ASIN 行まで縮めてしまう
-        plan = plan_row_heights({"A": [8], "B": [13]})
+        plan = plan_row_heights({"A": [8], "B": [14]})
 
-        assert [(first, last) for first, last, _ in plan] == [(7, 7), (8, 11), (12, 12), (13, 16)]
+        assert [(first, last) for first, last, _ in plan] == [(7, 7), (8, 12), (13, 13), (14, 18)]
 
     def test_label_height_is_half_of_the_asin_row(self) -> None:
         assert LABEL_ROW_HEIGHT * 2 in (ASIN_ROW_HEIGHT, ASIN_ROW_HEIGHT - 1)
@@ -36,7 +36,7 @@ def _worksheet() -> Mock:
     worksheet = Mock(spec=Worksheet)
     worksheet.id = 0
     worksheet.row_values.return_value = ["ASIN", "商品名"]
-    col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", ""]
+    col_a = ["", "", "", "ASIN", "B00EXAMPLE"] + [""] * 5
     col_name = ["", "", "", "商品名", "ルーペ"] + list(ROW_LABELS_IN_ORDER)
     worksheet.col_values.side_effect = lambda col, **kwargs: col_a if col == 1 else col_name
     return worksheet
@@ -46,7 +46,7 @@ class TestRowHeights:
     def test_sets_both_the_asin_row_and_the_label_rows(self) -> None:
         worksheet = _worksheet()
 
-        assert RowHeights(worksheet).shrink_label_rows() == 5
+        assert RowHeights(worksheet).shrink_label_rows() == 6
         requests = worksheet.spreadsheet.batch_update.call_args[0][0]["requests"]
         sizes = [r["updateDimensionProperties"]["properties"]["pixelSize"] for r in requests]
         assert sizes == [ASIN_ROW_HEIGHT, LABEL_ROW_HEIGHT]

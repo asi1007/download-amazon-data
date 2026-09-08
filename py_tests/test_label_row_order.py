@@ -8,8 +8,8 @@ from py_src.infrastructure.sheets.label_row_order import (
     plan_block_moves,
 )
 
-CURRENT = ["広告経由", "営業利益", "粗利益", "広告費"]
-EXPECTED = ["営業利益", "広告経由", "粗利益", "広告費"]
+CURRENT = ["広告経由", "営業利益", "粗利益", "広告費", "順位"]
+EXPECTED = ["営業利益", "広告経由", "粗利益", "広告費", "順位"]
 
 
 class TestPlanBlockMoves:
@@ -43,7 +43,7 @@ def _worksheet(labels: list[str]) -> Mock:
     worksheet = Mock(spec=Worksheet)
     worksheet.id = 0
     worksheet.row_values.return_value = ["ASIN", "商品名"]
-    col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", ""]
+    col_a = ["", "", "", "ASIN", "B00EXAMPLE"] + [""] * 5
     col_name = ["", "", "", "商品名", "ルーペ"] + labels
     worksheet.col_values.side_effect = lambda col, **kwargs: col_a if col == 1 else col_name
     return worksheet

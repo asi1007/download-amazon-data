@@ -7,11 +7,13 @@ from py_src.infrastructure.sheets.label_rows import (
     AD_COST_ROW_LABEL,
     AD_ROW_LABEL,
     GROSS_PROFIT_ROW_LABEL,
+    RANK_ROW_LABEL,
     ROW_LABELS_IN_ORDER,
     bind_label_rows,
     date_serial,
     OPERATING_PROFIT_ROW_LABEL,
     find_column,
+    matches_label,
     read_date_columns,
 )
 
@@ -65,6 +67,7 @@ class TestRowLabelsInOrder:
             AD_ROW_LABEL,
             GROSS_PROFIT_ROW_LABEL,
             AD_COST_ROW_LABEL,
+            RANK_ROW_LABEL,
         )
 
 
@@ -125,3 +128,34 @@ class TestReadDateColumnsAmbiguity:
         worksheet.row_values.return_value = ["ASIN", True, 46269]
 
         assert read_date_columns(worksheet) == {46269: 3}
+
+
+class TestRankLabelMatching:
+    def test_rank_label_matches_with_category_in_parentheses(self) -> None:
+        assert matches_label("順位（メガネストラップ）", RANK_ROW_LABEL) is True
+
+    def test_rank_label_matches_when_category_is_unknown(self) -> None:
+        assert matches_label("順位", RANK_ROW_LABEL) is True
+
+    def test_rank_label_does_not_match_a_different_label(self) -> None:
+        # 「順位表」のような別の行を誤って掴まない
+        assert matches_label("順位表", RANK_ROW_LABEL) is False
+
+    def test_other_labels_still_need_an_exact_match(self) -> None:
+        assert matches_label("粗利益", GROSS_PROFIT_ROW_LABEL) is True
+        assert matches_label("粗利益（見積）", GROSS_PROFIT_ROW_LABEL) is False
+
+    def test_rank_row_is_last_in_the_order(self) -> None:
+        # listing-creator の LABEL_ROWS_IN_ORDER と一致していなければならない
+        assert ROW_LABELS_IN_ORDER == ("営業利益", "広告経由", "粗利益", "広告費", "順位")
+
+    def test_bind_label_rows_finds_the_rank_row_by_prefix(self) -> None:
+        asin_values = ["ASIN", "", "", "header", "B00EXAMPLE", "", "", "", "", ""]
+        name_values = [
+            "商品名", "", "", "header",
+            "商品名です", "営業利益", "広告経由", "粗利益", "広告費", "順位（ジュエリー収納）",
+        ]
+
+        rows = bind_label_rows(asin_values, name_values, RANK_ROW_LABEL)
+
+        assert rows == {"B00EXAMPLE": [10]}

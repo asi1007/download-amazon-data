@@ -34,6 +34,7 @@ class TestPlanLabelInsertions:
             ("", "広告経由"),
             ("", "粗利益"),
             ("", "広告費"),
+            ("", "順位"),
         ])
 
         assert plan_label_insertions(asin, name) == [(6, ["営業利益"])]
@@ -44,13 +45,15 @@ class TestPlanLabelInsertions:
             ("", "広告経由"),
             ("", "粗利益"),
             ("", "広告費"),
+            ("", "順位"),
             ("B00EXAMPLF", "ボール"),
             ("", "広告経由"),
             ("", "粗利益"),
             ("", "広告費"),
+            ("", "順位"),
         ])
 
-        assert plan_label_insertions(asin, name) == [(10, ["営業利益"]), (6, ["営業利益"])]
+        assert plan_label_insertions(asin, name) == [(11, ["営業利益"]), (6, ["営業利益"])]
 
 
 class TestRowArithmetic:
@@ -72,3 +75,30 @@ class TestRowArithmetic:
         assert label_row_numbers(plan) == [
             (6, "広告経由"), (7, "営業利益"), (8, "粗利益"), (9, "広告費"),
         ]
+
+
+class TestRankRowIsNotDuplicated:
+    def test_existing_rank_row_with_category_is_not_inserted_again(self) -> None:
+        # 完全一致で突き合わせると、カテゴリ名付きの順位行を「無い」と判定して
+        # 実行のたびに1本ずつ増える
+        asin, name = _sheet([
+            ("B00EXAMPLE", "ルーペ"),
+            ("", "営業利益"),
+            ("", "広告経由"),
+            ("", "粗利益"),
+            ("", "広告費"),
+            ("", "順位（ジュエリー収納）"),
+        ])
+
+        assert plan_label_insertions(asin, name) == []
+
+    def test_missing_rank_row_is_appended_after_the_ad_cost_row(self) -> None:
+        asin, name = _sheet([
+            ("B00EXAMPLE", "ルーペ"),
+            ("", "営業利益"),
+            ("", "広告経由"),
+            ("", "粗利益"),
+            ("", "広告費"),
+        ])
+
+        assert plan_label_insertions(asin, name) == [(10, ["順位"])]

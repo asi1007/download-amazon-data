@@ -14,6 +14,10 @@ AD_ROW_LABEL = "広告経由"
 OPERATING_PROFIT_ROW_LABEL = "営業利益"
 GROSS_PROFIT_ROW_LABEL = "粗利益"
 AD_COST_ROW_LABEL = "広告費"
+# 順位行だけラベル名にカテゴリ名を埋める（順位（ジュエリー収納））。カテゴリ名を
+# 別の列やノートに持つと、開かないと何のカテゴリか読めない
+RANK_ROW_LABEL = "順位"
+CATEGORY_OPEN = "（"
 # 営業利益は粗利益の上に置く。値ではなく数式（粗利益 − 広告費）を入れるので、
 # 粗利益と広告費のどちらが後から更新されても自動で追従する
 # 営業利益を先頭に置く。残りの3行は折りたたむので、たたんだ状態でも
@@ -23,6 +27,7 @@ ROW_LABELS_IN_ORDER: tuple[str, ...] = (
     AD_ROW_LABEL,
     GROSS_PROFIT_ROW_LABEL,
     AD_COST_ROW_LABEL,
+    RANK_ROW_LABEL,
 )
 # 折りたたむラベル行（営業利益より下の3本）
 COLLAPSIBLE_ROW_LABELS: tuple[str, ...] = ROW_LABELS_IN_ORDER[1:]
@@ -36,6 +41,12 @@ K_YEN_NUMBER_FORMAT = {"type": "NUMBER", "pattern": "#,##0.0,"}
 
 def date_serial(day: date) -> int:
     return (day - SHEETS_EPOCH).days
+
+
+def matches_label(name: str, label: str) -> bool:
+    if label != RANK_ROW_LABEL:
+        return name == label
+    return name == label or name.startswith(f"{label}{CATEGORY_OPEN}")
 
 
 def bind_label_rows(
@@ -53,7 +64,7 @@ def bind_label_rows(
         if asin:
             current_asin = ""
             continue
-        if name == label and current_asin:
+        if matches_label(name, label) and current_asin:
             label_rows.setdefault(current_asin, []).append(row)
     return label_rows
 

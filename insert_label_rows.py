@@ -12,6 +12,7 @@ from py_src.infrastructure.sheets.label_rows import (
     PRODUCT_NAME_HEADER,
     ROW_LABELS_IN_ORDER,
     find_column,
+    matches_label,
 )
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
 from py_src.infrastructure.sheets.row_groups import RowGroups
@@ -37,7 +38,9 @@ def plan_label_insertions(
         pending: list[str] = []
         for label in ROW_LABELS_IN_ORDER:
             name = name_values[cursor].strip() if cursor < len(name_values) else ""
-            if name == label:
+            # 順位行はラベルにカテゴリ名が入る。完全一致で見ると毎回「無い」と
+            # 判定され、実行のたびに1本ずつ増える
+            if matches_label(name, label):
                 if pending:
                     plan.append((cursor + 1, pending))
                     pending = []

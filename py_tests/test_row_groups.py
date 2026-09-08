@@ -14,10 +14,10 @@ from py_src.infrastructure.sheets.row_groups import RowGroups, plan_groups
 class TestPlanGroups:
     def test_group_starts_below_the_operating_profit_row(self) -> None:
         # ASIN行と営業利益はたたんでも見えたままにする
-        assert plan_groups({"B00EXAMPLE": [8]}) == [(9, 11)]
+        assert plan_groups({"B00EXAMPLE": [8]}) == [(9, 12)]
 
     def test_one_group_per_product(self) -> None:
-        assert plan_groups({"A": [8], "B": [13]}) == [(9, 11), (14, 16)]
+        assert plan_groups({"A": [8], "B": [13]}) == [(9, 12), (14, 17)]
 
     def test_reserved_rows_are_skipped(self) -> None:
         assert plan_groups({"A": [3]}) == []
@@ -51,7 +51,7 @@ class TestRowGroups:
         assert RowGroups(worksheet).collapse_label_rows() == 1
         added = [r for r in _requests(worksheet) if "addDimensionGroup" in r]
         assert added[0]["addDimensionGroup"]["range"]["startIndex"] == 6
-        assert added[0]["addDimensionGroup"]["range"]["endIndex"] == 9
+        assert added[0]["addDimensionGroup"]["range"]["endIndex"] == 10
 
     def test_group_is_collapsed(self) -> None:
         worksheet = _worksheet()
