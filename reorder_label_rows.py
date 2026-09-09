@@ -9,8 +9,8 @@ import os
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.label_row_order import LabelRowOrder
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.label_row_order import LabelRowOrder
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 

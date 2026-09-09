@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from py_src.domain.value_objects.ad_metrics import AdMetrics
+from sales_data.domain.value_objects.ad_metrics import AdMetrics
 from py_src.domain.value_objects.ads_credentials import AdsCredentials
 from py_src.infrastructure.api.ads_units_repository import (
     AdsReportError,

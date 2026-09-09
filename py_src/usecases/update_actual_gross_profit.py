@@ -2,8 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
-from py_src.domain.value_objects.actual_profit_cell import ActualProfitWriteResult
-from py_src.domain.value_objects.gross_profit_write_result import (
+from sales_data.domain.value_objects.actual_profit_cell import ActualProfitWriteResult
+from sales_data.domain.value_objects.gross_profit_write_result import (
     GrossProfitRowsNotFoundError,
 )
 from py_src.usecases.settle_gross_profit import (

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "download-amazon-data"
-version = "0.49.0"
+version = "0.50.0"
 description = "Amazon SP-API リアルタイム売上モニタリング"
 requires-python = ">=3.12"
 
@@ -32,4 +32,6 @@ testpaths = ["py_tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --tb=short"
-pythonpath = ["."]
+# 共有ライブラリのパスを明示する。editable install の .pth は macOS の hidden
+# フラグが立つと Python 3.13+ の site に無視され、chflags で外しても数分で戻る
+pythonpath = [".", "../../shared/sales-data/src"]

@@ -1,5 +1,5 @@
 import pytest
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 
 
 class TestSalesInfo:

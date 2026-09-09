@@ -1,14 +1,14 @@
 from unittest.mock import Mock, patch
 
-from py_src.infrastructure.sheets.spreadsheet_client import (
+from sales_data.infrastructure.sheets.spreadsheet_client import (
     open_spreadsheet,
     GOOGLE_SHEETS_TIMEOUT_SECONDS,
 )
 
 
 class TestOpenSpreadsheet:
-    @patch("py_src.infrastructure.sheets.spreadsheet_client.ServiceAccountCredentials")
-    @patch("py_src.infrastructure.sheets.spreadsheet_client.gspread")
+    @patch("sales_data.infrastructure.sheets.spreadsheet_client.ServiceAccountCredentials")
+    @patch("sales_data.infrastructure.sheets.spreadsheet_client.gspread")
     def test_sets_timeout_on_the_client(
         self, mock_gspread: Mock, mock_creds_cls: Mock
     ) -> None:
@@ -23,8 +23,8 @@ class TestOpenSpreadsheet:
         mock_client.open_by_key.assert_called_once_with("sheet123")
         assert result is mock_spreadsheet
 
-    @patch("py_src.infrastructure.sheets.spreadsheet_client.ServiceAccountCredentials")
-    @patch("py_src.infrastructure.sheets.spreadsheet_client.gspread")
+    @patch("sales_data.infrastructure.sheets.spreadsheet_client.ServiceAccountCredentials")
+    @patch("sales_data.infrastructure.sheets.spreadsheet_client.gspread")
     def test_timeout_is_set_before_the_hangable_open_by_key_call(
         self, mock_gspread: Mock, mock_creds_cls: Mock
     ) -> None:

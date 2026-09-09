@@ -6,7 +6,7 @@ from datetime import date
 from gspread.utils import rowcol_to_a1
 
 from py_src.domain.value_objects.category_rank import CategoryRank
-from py_src.infrastructure.sheets.label_rows import (
+from sales_data.infrastructure.sheets.layout import (
     CATEGORY_OPEN,
     PRODUCT_NAME_HEADER,
     RANK_ROW_LABEL,

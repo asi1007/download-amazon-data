@@ -3,18 +3,18 @@ from unittest.mock import Mock, call, patch
 
 import backfill_daily_sales
 from backfill_daily_sales import _backfill_one_day
-from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.domain.value_objects.unit_costs import UnitCosts
-from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
-from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
+from sales_data.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.unit_costs import UnitCosts
+from sales_data.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
+from sales_data.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
 JST = timezone(timedelta(hours=9))
 
 
 class TestBackfillOneDay:
     def test_writes_through_write_sales_nums_with_target_date(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
@@ -29,7 +29,7 @@ class TestBackfillOneDay:
         )
 
     def test_does_not_reach_into_sales_sheet_privates(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         sales_repository.get_daily_sales.return_value = {}
@@ -39,7 +39,7 @@ class TestBackfillOneDay:
         sales_sheet._resolve_column_for.assert_not_called()
 
     def test_fetches_the_requested_days_utc_window(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         sales_repository.get_daily_sales.return_value = {}
@@ -53,7 +53,7 @@ class TestBackfillOneDay:
         assert end_date_utc == "2026-06-18T15:00:00Z"
 
     def test_writes_gross_profit_after_sales_nums_using_the_given_costs(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
@@ -74,7 +74,7 @@ class TestBackfillOneDay:
         )
 
     def test_blanks_gross_profit_when_cost_is_missing(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.write_gross_profit.return_value = GrossProfitWriteResult()
         sales_repository = Mock()
         asin_sales = {
@@ -98,7 +98,7 @@ class TestMainReadsCostsOnce:
             patch.object(backfill_daily_sales, "SpApiAuthenticator") as authenticator_cls,
             patch.object(backfill_daily_sales, "SpApiSalesRepository") as repository_cls,
             patch.object(backfill_daily_sales, "_open_spreadsheet") as open_spreadsheet,
-            patch.object(backfill_daily_sales, "SalesSheet") as sales_sheet_cls,
+            patch.object(backfill_daily_sales, "SheetsSalesRepository") as sales_sheet_cls,
             patch.object(backfill_daily_sales, "UnitCostReader", spec=UnitCostReader) as reader_cls,
             patch.object(backfill_daily_sales.sys, "argv", ["backfill_daily_sales.py", "2026-06-18", "2026-06-19"]),
         ):

@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from py_src.infrastructure.sheets.rank_sheet import RankSheet
+from sales_data.infrastructure.sheets.rank_sheet import RankSheet
 
 
 def _worksheet() -> Mock:

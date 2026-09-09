@@ -5,11 +5,11 @@ import pytest
 
 from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase, HOURLY_SALES_DEADLINE_SECONDS
 from py_src.domain.repositories.sales_repository import SalesRepository
-from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.domain.value_objects.unit_costs import UnitCosts
+from sales_data.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.unit_costs import UnitCosts
 from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
-from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
+from sales_data.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
 JST = timezone(timedelta(hours=9))
 
@@ -22,7 +22,7 @@ def _no_cost_reader() -> Mock:
 
 class TestUpdateTodaySalesUseCase:
     def test_execute_writes_sales_only(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF"]
         mock_sales_repo = Mock(spec=SalesRepository)
         mock_sales_repo.get_daily_sales.return_value = {
@@ -42,7 +42,7 @@ class TestUpdateTodaySalesUseCase:
         mock_sheet.write_sales_nums.assert_called_once()
 
     def test_does_not_write_prices(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = []
         mock_sales_repo = Mock(spec=SalesRepository)
         mock_sales_repo.get_daily_sales.return_value = {}
@@ -57,7 +57,7 @@ class TestUpdateTodaySalesUseCase:
         mock_sheet.write_prices.assert_not_called()
 
     def test_today_date_range_is_valid(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = []
         mock_sales_repo = Mock(spec=SalesRepository)
         mock_sales_repo.get_daily_sales.return_value = {}
@@ -77,7 +77,7 @@ class TestUpdateTodaySalesUseCase:
         assert start_date < end_date
 
     def test_write_sales_nums_receives_todays_date(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = []
         mock_sales_repo = Mock(spec=SalesRepository)
         mock_sales_repo.get_daily_sales.return_value = {}
@@ -94,7 +94,7 @@ class TestUpdateTodaySalesUseCase:
         assert kwargs["target_date"] == expected_today
 
     def test_passes_a_deadline_bounded_by_the_hourly_budget(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = []
         mock_sales_repo = Mock(spec=SalesRepository)
         mock_sales_repo.get_daily_sales.return_value = {}
@@ -113,7 +113,7 @@ class TestUpdateTodaySalesUseCase:
         assert kwargs["deadline_at"] == 1_000.0 + HOURLY_SALES_DEADLINE_SECONDS
 
     def test_deadline_exceeded_writes_partial_results_then_reraises(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF", "B00EXAMPLG"]
         partial_results = {
             "B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=6000.0, order_count=1),
@@ -138,7 +138,7 @@ class TestUpdateTodaySalesUseCase:
         assert kwargs["include_total"] is False
 
     def test_deadline_exceeded_writes_gross_profit_for_partial_results(self) -> None:
-        mock_sheet = Mock(spec=SalesSheet)
+        mock_sheet = Mock(spec=SheetsSalesRepository)
         mock_sheet.get_asin_list.return_value = ["B00EXAMPLE", "B00EXAMPLF"]
         partial_results = {
             "B00EXAMPLE": SalesInfo(unit_count=3, total_sales_amount=3000.0),
@@ -163,7 +163,7 @@ class TestUpdateTodaySalesUseCase:
         )
 
     def test_writes_estimated_gross_profit_after_units(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
         cost_reader = Mock(spec=UnitCostReader)
         cost_reader.read.return_value = {
@@ -185,7 +185,7 @@ class TestUpdateTodaySalesUseCase:
         assert written == {"B00EXAMPLE": 1200.0}
 
     def test_asin_with_missing_costs_is_blanked_rather_than_left_stale(self) -> None:
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
         cost_reader = Mock(spec=UnitCostReader)
         cost_reader.read.return_value = {"B00EXAMPLE": UnitCosts(None, 300.0, 200.0)}
@@ -206,7 +206,7 @@ class TestUpdateTodaySalesUseCase:
 
     def test_units_are_written_before_profit(self) -> None:
         # 粗利益は売上個数と同じ列に書くので、列を解決する write_sales_nums が先
-        sales_sheet = Mock(spec=SalesSheet)
+        sales_sheet = Mock(spec=SheetsSalesRepository)
         sales_sheet.get_asin_list.return_value = ["B00EXAMPLE"]
         cost_reader = Mock(spec=UnitCostReader)
         cost_reader.read.return_value = {

@@ -7,14 +7,14 @@ import gspread
 from dotenv import load_dotenv
 
 from py_src.domain.repositories.sales_repository import SalesRepository
-from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
-from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
+from sales_data.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
+from sales_data.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
-from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.unit_cost_reader import UnitCostReader
 
 JST = timezone(timedelta(hours=9))
 SHEETS_EPOCH = datetime(1899, 12, 30)
@@ -37,7 +37,7 @@ def main() -> None:
 
     spreadsheet = _open_spreadsheet()
     worksheet = spreadsheet.worksheet("売上/日")
-    sales_sheet = SalesSheet(sales_worksheet=worksheet)
+    sales_sheet = SheetsSalesRepository(sales_worksheet=worksheet)
     asin_list = sales_sheet.get_asin_list()
     print(f"対象ASIN: {len(asin_list)}件")
 
@@ -52,7 +52,7 @@ def main() -> None:
 
 
 def _backfill_one_day(
-    sales_sheet: SalesSheet,
+    sales_sheet: SheetsSalesRepository,
     asin_list: list[str],
     sales_repository: SalesRepository,
     target_date_str: str,
@@ -80,7 +80,7 @@ def _backfill_one_day(
 
 
 def _write_gross_profit(
-    sales_sheet: SalesSheet,
+    sales_sheet: SheetsSalesRepository,
     asin_sales: dict[str, SalesInfo],
     costs: dict[str, UnitCosts],
     target_date: date,

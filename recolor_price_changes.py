@@ -10,8 +10,8 @@ import sys
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 
@@ -23,7 +23,7 @@ def main() -> None:
         os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json"),
         os.getenv("SPREADSHEET_ID"),
     )
-    sheet = SalesSheet(sales_worksheet=spreadsheet.worksheet(SHEET_NAME))
+    sheet = SheetsSalesRepository(sales_worksheet=spreadsheet.worksheet(SHEET_NAME))
     asin_list = sheet.get_asin_list()
     print(f"対象ASIN: {len(asin_list)}件")
 

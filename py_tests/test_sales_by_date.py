@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 

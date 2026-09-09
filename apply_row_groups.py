@@ -9,8 +9,8 @@ import os
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.row_groups import RowGroups
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.row_groups import RowGroups
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 

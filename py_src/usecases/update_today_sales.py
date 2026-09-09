@@ -2,9 +2,9 @@ from __future__ import annotations
 import time
 from datetime import date, datetime, timezone, timedelta
 from py_src.domain.repositories.sales_repository import SalesRepository
-from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
-from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
+from sales_data.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
+from sales_data.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.unit_costs import UnitCosts, estimate_gross_profit
 from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
 
 JST = timezone(timedelta(hours=9))

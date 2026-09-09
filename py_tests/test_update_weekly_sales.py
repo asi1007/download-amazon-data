@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone, timedelta
 from unittest.mock import Mock
 from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 
 JST = timezone(timedelta(hours=9))
 

@@ -10,8 +10,8 @@ import os
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.gradient_rules import GradientRules
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.gradient_rules import GradientRules
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 

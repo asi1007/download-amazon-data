@@ -7,8 +7,8 @@ import os
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.inventory_alerts import InventoryAlerts
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.inventory_alerts import InventoryAlerts
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 

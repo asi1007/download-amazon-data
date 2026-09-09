@@ -1,5 +1,5 @@
 from unittest.mock import Mock
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 
 

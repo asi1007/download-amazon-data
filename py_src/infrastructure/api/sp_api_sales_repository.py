@@ -2,7 +2,7 @@ from __future__ import annotations
 import time
 from datetime import date, datetime
 import requests
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator, SP_API_BASE
 
 MARKETPLACE_JP = "A1VC38T7YXB528"

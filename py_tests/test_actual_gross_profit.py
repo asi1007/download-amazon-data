@@ -1,10 +1,10 @@
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.settled_fees import (
     SettledFees,
     actual_gross_profit,
     is_fully_settled,
 )
-from py_src.domain.value_objects.unit_costs import UnitCosts
+from sales_data.domain.value_objects.unit_costs import UnitCosts
 
 COSTS = UnitCosts(selling_fee=100.0, fba_fee=200.0, cost=400.0)
 

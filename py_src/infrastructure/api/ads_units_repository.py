@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 import requests
 
-from py_src.domain.value_objects.ad_metrics import AdMetrics
+from sales_data.domain.value_objects.ad_metrics import AdMetrics
 from py_src.domain.value_objects.ads_credentials import AdsCredentials
 
 TOKEN_URL = "https://api.amazon.com/auth/o2/token"

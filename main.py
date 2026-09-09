@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import gspread
 
-from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
+from sales_data.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
 from py_src.infrastructure.api.sp_api_catalog import SpApiCatalog
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
@@ -16,19 +16,19 @@ from py_src.infrastructure.api.orders_report_repository import OrdersReportRepos
 from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
 from py_src.infrastructure.sheets.amazon_ad_sheet import AmazonAdSheet
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 from py_src.infrastructure.sheets.inventory_sheet import InventorySheet
-from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
-from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
-from py_src.infrastructure.sheets.product_index_reader import ProductIndexReader
+from sales_data.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
+from sales_data.infrastructure.sheets.unit_cost_reader import UnitCostReader
+from sales_data.infrastructure.sheets.product_index_reader import ProductIndexReader
 from py_src.infrastructure.sheets.fee_gap_sheet import FeeGapSheet
-from py_src.infrastructure.sheets.rank_sheet import RankSheet
-from py_src.infrastructure.sheets.gradient_rules import GradientRules
-from py_src.infrastructure.sheets.retry import retry_on_transient_error
-from py_src.infrastructure.sheets.row_groups import RowGroups
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.rank_sheet import RankSheet
+from sales_data.infrastructure.sheets.gradient_rules import GradientRules
+from sales_data.infrastructure.sheets.retry import retry_on_transient_error
+from sales_data.infrastructure.sheets.row_groups import RowGroups
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
 from py_src.usecases.update_today_sales import UpdateTodaySalesUseCase
@@ -54,7 +54,7 @@ def main() -> None:
     realtime_sheet = RealtimeSalesSheet(worksheet=realtime_ws)
 
     sales_ws = spreadsheet.worksheet("売上/日")
-    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    sales_sheet = SheetsSalesRepository(sales_worksheet=sales_ws)
 
     usecase = UpdateRealtimeSalesUseCase(
         realtime_sheet=realtime_sheet,
@@ -86,7 +86,7 @@ def update_daily_sales() -> None:
     price_repository = SpApiPriceRepository(authenticator=authenticator)
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
-    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    sales_sheet = SheetsSalesRepository(sales_worksheet=sales_ws)
     cost_reader = UnitCostReader(sales_ws)
     usecase = UpdateDailySalesUseCase(
         sales_sheet=sales_sheet,
@@ -109,7 +109,7 @@ def update_today_sales() -> None:
     sales_repository = SpApiSalesRepository(authenticator=authenticator)
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
-    sales_sheet = SalesSheet(sales_worksheet=sales_ws)
+    sales_sheet = SheetsSalesRepository(sales_worksheet=sales_ws)
     cost_reader = UnitCostReader(sales_ws)
     usecase = UpdateTodaySalesUseCase(
         sales_sheet=sales_sheet,
@@ -133,7 +133,7 @@ def update_weekly_sales() -> None:
     authenticator = _create_authenticator()
     sales_repository = SpApiSalesRepository(authenticator=authenticator)
     spreadsheet = _open_spreadsheet()
-    sales_sheet = SalesSheet(sales_worksheet=spreadsheet.worksheet("売上/日"))
+    sales_sheet = SheetsSalesRepository(sales_worksheet=spreadsheet.worksheet("売上/日"))
     ad_sheet = AmazonAdSheet(worksheet=spreadsheet.worksheet("Amazon広告"))
     sales_data_sheet = SalesDataSheet(worksheet=spreadsheet.worksheet("sales_data"))
     usecase = UpdateWeeklySalesUseCase(
@@ -168,7 +168,7 @@ def update_actual_gross_profit() -> None:
     spreadsheet = _open_spreadsheet()
     sales_ws = spreadsheet.worksheet("売上/日")
     usecase = UpdateActualGrossProfitUseCase(
-        sales_sheet=SalesSheet(sales_worksheet=sales_ws),
+        sales_sheet=SheetsSalesRepository(sales_worksheet=sales_ws),
         sales_repository=SpApiSalesRepository(authenticator=authenticator),
         orders_repository=OrdersReportRepository(authenticator=authenticator),
         finances_repository=FinancesRepository(authenticator=authenticator),

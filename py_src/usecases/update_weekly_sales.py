@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import date, datetime, time, timezone, timedelta
 from py_src.domain.repositories.sales_repository import SalesRepository
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
 from py_src.infrastructure.sheets.amazon_ad_sheet import AmazonAdSheet
 from py_src.infrastructure.sheets.sales_data_sheet import SalesDataSheet
 
@@ -11,7 +11,7 @@ JST = timezone(timedelta(hours=9))
 class UpdateWeeklySalesUseCase:
     def __init__(
         self,
-        sales_sheet: SalesSheet,
+        sales_sheet: SheetsSalesRepository,
         sales_repository: SalesRepository,
         ad_sheet: AmazonAdSheet,
         sales_data_sheet: SalesDataSheet,

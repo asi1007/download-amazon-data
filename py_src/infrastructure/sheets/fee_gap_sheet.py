@@ -5,7 +5,7 @@ import gspread
 from gspread import Spreadsheet
 
 from py_src.domain.value_objects.fee_gap import FeeGap
-from py_src.infrastructure.sheets.retry import retry_on_transient_error
+from sales_data.infrastructure.sheets.retry import retry_on_transient_error
 
 FEE_GAP_SHEET_NAME = "手数料乖離"
 # 販売手数料は価格に比例するのでセール中は下がるのが当然。FBA手数料は価格に

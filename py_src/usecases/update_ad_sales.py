@@ -1,8 +1,8 @@
 from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
-from py_src.domain.value_objects.ad_metrics import AdMetrics
-from py_src.domain.value_objects.ad_write_result import AdWriteResult
+from sales_data.domain.value_objects.ad_metrics import AdMetrics
+from sales_data.domain.value_objects.ad_write_result import AdWriteResult
 
 JST = timezone(timedelta(hours=9))
 DEFAULT_DAYS = 14

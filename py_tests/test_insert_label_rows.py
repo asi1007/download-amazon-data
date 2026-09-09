@@ -3,7 +3,7 @@ from insert_label_rows import (
     label_row_numbers,
     plan_label_insertions,
 )
-from py_src.infrastructure.sheets.label_rows import ROW_LABELS_IN_ORDER
+from sales_data.infrastructure.sheets.layout import ROW_LABELS_IN_ORDER
 
 HEADER_ROWS = ["", "", "", "ASIN"]
 

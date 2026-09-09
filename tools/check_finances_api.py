@@ -13,8 +13,8 @@ from py_src.infrastructure.api.sp_api_authenticator import (
     SpApiAuthenticator,
     SP_API_BASE,
 )
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
-from py_src.infrastructure.sheets.label_rows import HEADER_ROW, find_column, ASIN_LENGTH
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.layout import HEADER_ROW, find_column, ASIN_LENGTH
 
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 MARKETPLACE_ID = "A1VC38T7YXB528"

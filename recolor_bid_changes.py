@@ -19,13 +19,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.bid_change_cells import classify_bid_changes
-from py_src.infrastructure.sheets.label_rows import (
+from sales_data.infrastructure.sheets.bid_change_cells import classify_bid_changes
+from sales_data.infrastructure.sheets.layout import (
     OPERATING_PROFIT_ROW_LABEL,
     bind_label_rows,
     read_date_columns,
 )
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 # ASIN は A 列、ラベル（営業利益 / 広告経由 / 粗利益 / 広告費）は H 列（商品名と同じ列）

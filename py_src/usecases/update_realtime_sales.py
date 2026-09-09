@@ -2,10 +2,10 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone, timedelta
 from py_src.domain.value_objects.realtime_sales_result import RealtimeSalesResult
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.realtime_sales_sheet import RealtimeSalesSheet
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
 
 JST = timezone(timedelta(hours=9))
 
@@ -35,7 +35,7 @@ class UpdateRealtimeSalesUseCase:
         self,
         realtime_sheet: RealtimeSalesSheet,
         sales_repository: SpApiSalesRepository,
-        sales_sheet: SalesSheet | None = None,
+        sales_sheet: SheetsSalesRepository | None = None,
     ) -> None:
         self._realtime_sheet = realtime_sheet
         self._sales_repository = sales_repository

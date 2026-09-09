@@ -5,7 +5,7 @@ import sys
 import gspread
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.label_rows import (
+from sales_data.infrastructure.sheets.layout import (
     ASIN_COLUMN,
     ASIN_LENGTH,
     HEADER_ROW,
@@ -14,10 +14,10 @@ from py_src.infrastructure.sheets.label_rows import (
     find_column,
     matches_label,
 )
-from py_src.infrastructure.sheets.retry import retry_on_transient_error
-from py_src.infrastructure.sheets.row_groups import RowGroups
-from py_src.infrastructure.sheets.row_heights import RowHeights
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.retry import retry_on_transient_error
+from sales_data.infrastructure.sheets.row_groups import RowGroups
+from sales_data.infrastructure.sheets.row_heights import RowHeights
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 LABEL_ROW_BACKGROUND = {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}

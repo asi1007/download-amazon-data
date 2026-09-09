@@ -1,9 +1,9 @@
 from datetime import date
 
 from py_src.domain.value_objects.finance_record import FinanceRecord
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.domain.value_objects.settled_fees import SettledFees
-from py_src.domain.value_objects.unit_costs import UnitCosts
+from sales_data.domain.value_objects.unit_costs import UnitCosts
 from py_src.usecases.settle_gross_profit import (
     aggregate_settled,
     build_fee_gaps,

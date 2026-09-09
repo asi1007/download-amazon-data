@@ -7,8 +7,8 @@ import os
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.row_heights import RowHeights
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.row_heights import RowHeights
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
 

@@ -3,10 +3,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from py_src.domain.value_objects.ad_metrics import AdMetrics
-from py_src.domain.value_objects.ad_write_result import AdWriteResult
+from sales_data.domain.value_objects.ad_metrics import AdMetrics
+from sales_data.domain.value_objects.ad_write_result import AdWriteResult
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
-from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
+from sales_data.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.usecases.update_ad_sales import EmptyAdsReportError, UpdateAdSalesUseCase
 
 JST = timezone(timedelta(hours=9))

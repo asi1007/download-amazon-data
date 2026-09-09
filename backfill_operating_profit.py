@@ -11,9 +11,9 @@ from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
-from py_src.infrastructure.sheets.label_rows import date_serial, read_date_columns
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
-from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
+from sales_data.infrastructure.sheets.layout import date_serial, read_date_columns
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
+from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 JST = timezone(timedelta(hours=9))
 SHEET_NAME = "売上/日"
@@ -40,7 +40,7 @@ def main() -> None:
         columns_by_serial = {s: c for s, c in columns_by_serial.items() if s in wanted}
     columns = sorted(columns_by_serial.values())
     print(f"対象の日付列: {len(columns)} 列")
-    written = SalesSheet(sales_worksheet=worksheet).write_operating_profit_formulas(columns)
+    written = SheetsSalesRepository(sales_worksheet=worksheet).write_operating_profit_formulas(columns)
     print(f"営業利益の数式を {written} セルに入れました")
 
 

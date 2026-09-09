@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Protocol
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 
 
 class SalesRepository(Protocol):

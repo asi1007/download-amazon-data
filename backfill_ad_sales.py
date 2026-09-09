@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from main import ADS_ENV_PATH, _open_spreadsheet
 from py_src.infrastructure.api.ads_credentials_loader import load_ads_credentials
 from py_src.infrastructure.api.ads_units_repository import AdsUnitsRepository
-from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
+from sales_data.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
 
 MAX_DAYS_PER_REPORT = 31

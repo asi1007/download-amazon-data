@@ -4,7 +4,7 @@ from py_src.usecases.update_realtime_sales import (
     UpdateRealtimeSalesUseCase,
     REALTIME_SALES_DEADLINE_SECONDS,
 )
-from py_src.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.sales_info import SalesInfo
 from py_src.infrastructure.api.sp_api_sales_repository import SalesFetchDeadlineExceededError
 
 

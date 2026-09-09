@@ -3,16 +3,16 @@ from unittest.mock import Mock
 
 import pytest
 
-from py_src.domain.value_objects.actual_profit_cell import ActualProfitWriteResult
+from sales_data.domain.value_objects.actual_profit_cell import ActualProfitWriteResult
 from py_src.domain.value_objects.finance_record import FinanceRecord
-from py_src.domain.value_objects.sales_info import SalesInfo
-from py_src.domain.value_objects.unit_costs import UnitCosts
+from sales_data.domain.value_objects.sales_info import SalesInfo
+from sales_data.domain.value_objects.unit_costs import UnitCosts
 from py_src.infrastructure.api.finances_repository import FinancesRepository
 from py_src.infrastructure.api.orders_report_repository import OrdersReportRepository
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.sheets.fee_gap_sheet import FeeGapSheet
-from py_src.infrastructure.sheets.product_index_reader import ProductIndex, ProductIndexReader
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from sales_data.infrastructure.sheets.product_index_reader import ProductIndex, ProductIndexReader
+from sales_data.infrastructure.sheets.repository import SheetsSalesRepository
 from py_src.usecases.update_actual_gross_profit import (
     EmptyFinancesResultError,
     UpdateActualGrossProfitUseCase,
@@ -32,7 +32,7 @@ INDEX = ProductIndex(
 
 
 def _build(records: list[FinanceRecord] | None = None) -> tuple:
-    sheet = Mock(spec=SalesSheet)
+    sheet = Mock(spec=SheetsSalesRepository)
     sheet.get_asin_list.return_value = ["B00EXAMPLE"]
     sheet.write_actual_gross_profit.return_value = ActualProfitWriteResult(cells_written=1)
     sales_repo = Mock(spec=SpApiSalesRepository)
@@ -135,7 +135,7 @@ class TestUpdateActualGrossProfit:
         assert asked <= datetime.now(timezone.utc) - timedelta(minutes=2)
 
     def test_raises_when_nothing_could_be_written_despite_having_data(self) -> None:
-        from py_src.domain.value_objects.gross_profit_write_result import (
+        from sales_data.domain.value_objects.gross_profit_write_result import (
             GrossProfitRowsNotFoundError,
         )
 
