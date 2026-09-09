@@ -13,7 +13,13 @@ dependencies = [
     "gspread>=6.1.2",
     "oauth2client>=4.1.3",
     "python-dotenv>=1.0.1",
+    "sales-data",
 ]
+
+# 売上/日 の行構成と読み書きは automation 直下の共有ライブラリが持つ。
+# editable なので、ライブラリを直せば再インストールなしで反映される
+[tool.uv.sources]
+sales-data = { path = "../../shared/sales-data", editable = true }
 
 [project.optional-dependencies]
 dev = [
