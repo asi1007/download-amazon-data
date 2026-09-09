@@ -71,3 +71,49 @@ class TestRowGroups:
         deletes = [i for i, r in enumerate(requests) if "deleteDimensionGroup" in r]
         adds = [i for i, r in enumerate(requests) if "addDimensionGroup" in r]
         assert deletes and adds and max(deletes) < min(adds)
+
+
+class TestCollapseExpanded:
+    def test_an_expanded_group_gets_closed(self) -> None:
+        # 人が中を見るために開いた行が開いたまま残ると、商品が増えるほど
+        # 一覧が読めなくなる
+        worksheet = _worksheet(existing_groups=[
+            {"range": {"sheetId": 0, "dimension": "ROWS", "startIndex": 6, "endIndex": 9},
+             "depth": 1},
+        ])
+
+        assert RowGroups(worksheet).collapse_expanded() == 1
+        updated = [r for r in _requests(worksheet) if "updateDimensionGroup" in r]
+        assert updated[0]["updateDimensionGroup"]["dimensionGroup"]["collapsed"] is True
+        assert updated[0]["updateDimensionGroup"]["fields"] == "collapsed"
+
+    def test_already_collapsed_groups_are_left_alone(self) -> None:
+        worksheet = _worksheet(existing_groups=[
+            {"range": {"sheetId": 0, "dimension": "ROWS", "startIndex": 6, "endIndex": 9},
+             "depth": 1, "collapsed": True},
+        ])
+
+        assert RowGroups(worksheet).collapse_expanded() == 0
+        worksheet.spreadsheet.batch_update.assert_not_called()
+
+    def test_groups_are_neither_added_nor_removed(self) -> None:
+        # 作り直しは write_sales_sheet.py（新商品の挿入時）と apply_row_groups.py の
+        # 役目。ここは開いているものを閉じるだけにして、範囲には触らない
+        worksheet = _worksheet(existing_groups=[
+            {"range": {"sheetId": 0, "dimension": "ROWS", "startIndex": 6, "endIndex": 9},
+             "depth": 1},
+        ])
+        RowGroups(worksheet).collapse_expanded()
+
+        requests = _requests(worksheet)
+        assert not [r for r in requests if "addDimensionGroup" in r]
+        assert not [r for r in requests if "deleteDimensionGroup" in r]
+
+    def test_the_group_range_is_kept_as_is(self) -> None:
+        grid = {"sheetId": 0, "dimension": "ROWS", "startIndex": 6, "endIndex": 9}
+        worksheet = _worksheet(existing_groups=[{"range": grid, "depth": 2}])
+        RowGroups(worksheet).collapse_expanded()
+
+        dimension_group = _requests(worksheet)[0]["updateDimensionGroup"]["dimensionGroup"]
+        assert dimension_group["range"] == grid
+        assert dimension_group["depth"] == 2

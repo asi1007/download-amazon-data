@@ -9,6 +9,7 @@ from py_src.infrastructure.sheets.sales_sheet import (
     SalesSheet,
     FETCH_TIME_ROW,
     HEADER_ROW,
+    OPERATING_TOTAL_ROW,
     TOTAL_AMOUNT_ROW,
 )
 import pytest
@@ -36,7 +37,7 @@ class TestSalesSheet:
         asin_list = sheet.get_asin_list()
         assert asin_list == ["B00EXAMPLE", "B00EXAMPLF", "B00EXAMPLG"]
 
-    def test_write_sales_nums_total_amount_to_row3(self) -> None:
+    def test_write_sales_nums_writes_the_total_amount_to_the_total_row(self) -> None:
         sales_ws = _create_mock_worksheet()
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
@@ -50,11 +51,11 @@ class TestSalesSheet:
 
         assert sales_ws.insert_cols.call_count == 1
         assert sales_ws.insert_cols.call_args[0][1] == 3
-        row3_range = rowcol_to_a1(3, 3)
+        total_range = rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_request = [r for r in requests if r["range"] == row3_range]
-        assert len(row3_request) == 1
-        assert row3_request[0]["values"] == [[13500.0]]
+        total_request = [r for r in requests if r["range"] == total_range]
+        assert len(total_request) == 1
+        assert total_request[0]["values"] == [[13500.0]]
 
     def test_write_sales_nums_totals_only_fetched_asins(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -66,10 +67,10 @@ class TestSalesSheet:
         }
         sheet.write_sales_nums(asin_sales)
 
-        row3_range = rowcol_to_a1(3, 3)
+        total_range = rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_request = [r for r in requests if r["range"] == row3_range]
-        assert row3_request[0]["values"] == [[6000.0]]
+        total_request = [r for r in requests if r["range"] == total_range]
+        assert total_request[0]["values"] == [[6000.0]]
 
     def test_write_sales_nums_leaves_unfetched_asin_cell_empty(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -108,7 +109,7 @@ class TestSalesSheet:
 
         formats = sales_ws.batch_format.call_args[0][0]
         applied = {f["range"]: f["format"] for f in formats}
-        assert applied[rowcol_to_a1(3, 3)] == {
+        assert applied[rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)] == {
             "numberFormat": {"type": "NUMBER", "pattern": "#,##0,"},
             "textFormat": {"fontSize": 8},
         }
@@ -121,8 +122,8 @@ class TestSalesSheet:
         sheet.write_sales_nums({"B00EXAMPLE": SalesInfo(unit_count=2, total_sales_amount=502166.0)})
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_request = [r for r in requests if r["range"] == rowcol_to_a1(3, 3)]
-        assert row3_request[0]["values"] == [[502166.0]]
+        total_request = [r for r in requests if r["range"] == rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)]
+        assert total_request[0]["values"] == [[502166.0]]
 
     def test_write_sales_nums_skips_total_row_when_include_total_is_false(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -135,8 +136,8 @@ class TestSalesSheet:
         sheet.write_sales_nums(asin_sales, include_total=False)
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_range = rowcol_to_a1(3, 3)
-        assert not any(r["range"] == row3_range for r in requests)
+        total_range = rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)
+        assert not any(r["range"] == total_range for r in requests)
 
     def test_write_sales_nums_still_writes_fetched_cells_when_include_total_is_false(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -162,8 +163,8 @@ class TestSalesSheet:
         )
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_range = rowcol_to_a1(3, 3)
-        assert any(r["range"] == row3_range for r in requests)
+        total_range = rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)
+        assert any(r["range"] == total_range for r in requests)
 
     def test_write_prices_updates_cells(self) -> None:
         sales_ws = _create_mock_worksheet()
@@ -386,8 +387,8 @@ class TestDuplicatedAsinRows:
         })
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_request = [r for r in requests if r["range"] == rowcol_to_a1(3, 3)]
-        assert row3_request[0]["values"] == [[15000.0]]
+        total_request = [r for r in requests if r["range"] == rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)]
+        assert total_request[0]["values"] == [[15000.0]]
 
     def test_write_prices_fills_every_duplicated_row(self) -> None:
         sales_ws = _create_mock_worksheet_with_duplicates()
@@ -458,7 +459,8 @@ class TestFetchTimeRow:
         cell = rowcol_to_a1(FETCH_TIME_ROW, 2)
         written = [r for r in requests if r["range"] == cell]
         assert len(written) == 1
-        assert re.fullmatch(r"取得 \d{2}:\d{2}", written[0]["values"][0][0])
+        # 「取得」の文字は付けない。時刻だけで何の時刻かは位置で分かる
+        assert re.fullmatch(r"\d{2}:\d{2}", written[0]["values"][0][0])
 
     def test_does_not_write_fetch_time_for_a_past_date(self) -> None:
         # バックフィルで過去日を書いても「今日の更新時刻」を壊さない
@@ -540,8 +542,8 @@ class TestReservedRowGuard:
         # ASINの個数書き込みがガードで抑止され、日付ラベルの1件だけが残る。
         assert len(row1_requests) == 1
 
-    def test_skips_writing_unit_count_when_asin_lands_on_fetch_time_row(self) -> None:
-        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(FETCH_TIME_ROW)
+    def test_skips_writing_unit_count_when_asin_lands_on_operating_total_row(self) -> None:
+        sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(OPERATING_TOTAL_ROW)
         sheet = SalesSheet(sales_worksheet=sales_ws)
         sheet.get_asin_list()
 
@@ -550,9 +552,11 @@ class TestReservedRowGuard:
         )
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row2_requests = [r for r in requests if r["range"] == rowcol_to_a1(FETCH_TIME_ROW, 3)]
-        # ASINの個数書き込みがガードで抑止され、行2には何も書かれない
-        assert row2_requests == []
+        operating_requests = [
+            r for r in requests if r["range"] == rowcol_to_a1(OPERATING_TOTAL_ROW, 3)
+        ]
+        # 個数はガードで抑止され、営業利益の合計行（SUMIF）にも触らない
+        assert operating_requests == []
 
     def test_skips_writing_unit_count_when_asin_lands_on_total_amount_row(self) -> None:
         sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(TOTAL_AMOUNT_ROW)
@@ -564,10 +568,10 @@ class TestReservedRowGuard:
         )
 
         requests = sales_ws.batch_update.call_args_list[0][0][0]
-        row3_requests = [r for r in requests if r["range"] == rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)]
+        total_requests = [r for r in requests if r["range"] == rowcol_to_a1(TOTAL_AMOUNT_ROW, 3)]
         # ASINの個数書き込みがガードで抑止され、総売上の1件だけが残る。
-        assert len(row3_requests) == 1
-        assert row3_requests[0]["values"] == [[100.0]]
+        assert len(total_requests) == 1
+        assert total_requests[0]["values"] == [[100.0]]
 
     def test_skips_writing_unit_count_when_asin_lands_on_header_row(self) -> None:
         sales_ws = _create_mock_worksheet_with_asin_on_reserved_row(HEADER_ROW)
@@ -852,3 +856,16 @@ class TestRecolorPriceChanges:
         assert result.unchanged == [rowcol_to_a1(9, 4)]
         assert sales_ws.format.call_args_list == []
         assert _reset_ranges(sales_ws) == set()
+
+
+class TestSummaryRowOrder:
+    def test_total_sales_sits_above_the_operating_profit_total(self) -> None:
+        # 売上が上、利益がその下。並びが入れ替わると、どちらの数字を見て
+        # いるのか列の位置だけでは分からなくなる
+        assert TOTAL_AMOUNT_ROW == 2
+        assert OPERATING_TOTAL_ROW == 3
+
+    def test_the_fetch_time_shares_the_row_with_total_sales(self) -> None:
+        # 取得時刻は日付列ではなく「目標販売数」列に置く。行を入れ替えても
+        # 時刻は一番上の集計行に並べたままにする
+        assert FETCH_TIME_ROW == TOTAL_AMOUNT_ROW

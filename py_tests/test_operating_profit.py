@@ -9,7 +9,10 @@ from py_src.infrastructure.sheets.label_rows import (
     GROSS_PROFIT_ROW_LABEL,
     OPERATING_PROFIT_ROW_LABEL,
 )
-from py_src.infrastructure.sheets.sales_sheet import SalesSheet
+from py_src.infrastructure.sheets.sales_sheet import (
+    OPERATING_TOTAL_ROW,
+    SalesSheet,
+)
 
 
 def _worksheet() -> Mock:
@@ -121,7 +124,8 @@ class TestOperatingProfitTotals:
 
         assert sheet.write_operating_profit_totals([3]) == 1
         request = worksheet.batch_update.call_args[0][0][0]
-        assert request["range"] == "C2"
+        # 行2は総売上。営業利益の合計はその下の行3
+        assert request["range"] == rowcol_to_a1(OPERATING_TOTAL_ROW, 3)
         assert request["values"] == [['=SUMIF($B$5:$B,"営業利益",C$5:C)']]
 
     def test_uses_sumif_so_products_can_be_added_without_editing_the_formula(self) -> None:

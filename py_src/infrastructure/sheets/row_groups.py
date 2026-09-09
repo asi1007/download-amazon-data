@@ -60,19 +60,49 @@ class RowGroups:
         self._worksheet.spreadsheet.batch_update({"requests": requests})
         return len(plan)
 
-    def _delete_existing(self, sheet_id: int) -> list[dict]:
-        # 作り直しなので古いグループを消す。残すと同じ範囲に入れ子で積み上がる
+    @retry_on_transient_error
+    def collapse_expanded(self) -> int:
+        # 人が中を見るために開いた行を閉じ直すだけ。範囲の作り直しは
+        # write_sales_sheet.py（新商品の挿入時）と apply_row_groups.py の役目で、
+        # ここで作り直すと新商品の追加漏れを隠してしまう
+        expanded = [
+            group
+            for group in self._existing_groups(self._worksheet.id)
+            if not group.get("collapsed")
+        ]
+        if not expanded:
+            return 0
+        self._worksheet.spreadsheet.batch_update({
+            "requests": [
+                {
+                    "updateDimensionGroup": {
+                        "dimensionGroup": {
+                            "range": group["range"],
+                            "depth": group.get("depth", 1),
+                            "collapsed": True,
+                        },
+                        "fields": "collapsed",
+                    }
+                }
+                for group in expanded
+            ]
+        })
+        return len(expanded)
+
+    def _existing_groups(self, sheet_id: int) -> list[dict]:
         metadata = self._worksheet.spreadsheet.fetch_sheet_metadata(
-            {"fields": "sheets(properties(sheetId),rowGroups(range,depth))"}
+            {"fields": "sheets(properties(sheetId),rowGroups(range,depth,collapsed))"}
         )
         for sheet in metadata.get("sheets", []):
-            if sheet.get("properties", {}).get("sheetId") != sheet_id:
-                continue
-            return [
-                {"deleteDimensionGroup": {"range": group["range"]}}
-                for group in sorted(
-                    sheet.get("rowGroups", []),
-                    key=lambda g: -g.get("depth", 1),
-                )
-            ]
+            if sheet.get("properties", {}).get("sheetId") == sheet_id:
+                return sheet.get("rowGroups", [])
         return []
+
+    def _delete_existing(self, sheet_id: int) -> list[dict]:
+        # 作り直しなので古いグループを消す。残すと同じ範囲に入れ子で積み上がる
+        return [
+            {"deleteDimensionGroup": {"range": group["range"]}}
+            for group in sorted(
+                self._existing_groups(sheet_id), key=lambda g: -g.get("depth", 1)
+            )
+        ]

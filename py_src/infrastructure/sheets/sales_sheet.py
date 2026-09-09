@@ -31,13 +31,17 @@ from py_src.infrastructure.sheets.retry import retry_on_transient_error
 
 JST = timezone(timedelta(hours=9))
 HEADER_ROW = 4
-TOTAL_AMOUNT_ROW = 3
-# 行1〜4（日付ラベル・取得時刻・総売上）は予約行。ASINは必ず行5以降にある前提で
-# `row > HEADER_ROW` によりASINループの書き込みから一括で除外する。
-FETCH_TIME_ROW = 2
+TOTAL_AMOUNT_ROW = 2
+# 売上を上、利益をその下に置く。日付列は毎日増えるので、どちらの数字かは
+# 列の位置では分からない。上下の並びで見分ける
+OPERATING_TOTAL_ROW = 3
+# 行1〜4（日付ラベル・総売上・営業利益の合計）は予約行。ASINは必ず行5以降に
+# ある前提で `row > HEADER_ROW` によりASINループの書き込みから一括で除外する。
+# 取得時刻は日付列ではなく「目標販売数」列に置くので、総売上と同じ行に並ぶ
+FETCH_TIME_ROW = TOTAL_AMOUNT_ROW
 SHEETS_EPOCH = datetime(1899, 12, 30)
 DATE_LABEL_FORMAT = {"numberFormat": {"type": "DATE", "pattern": "dd"}}
-# 行2（営業利益の合計）と行3（総売上）。千円単位で表示するが単位の文字は付けない
+# 行2（総売上）と行3（営業利益の合計）。千円単位で表示するが単位の文字は付けない
 # （数字と単位が混ざると桁が読み取りにくい）。日付ラベルより一段小さくする
 SUMMARY_FONT_SIZE = 8
 TOTAL_AMOUNT_FORMAT = {
@@ -77,8 +81,11 @@ def apply_column_formats(worksheet: Worksheet, col: int) -> None:
         [
             {"range": rowcol_to_a1(1, col), "format": DATE_LABEL_FORMAT},
             {"range": rowcol_to_a1(HEADER_ROW, col), "format": DATE_LABEL_FORMAT},
-            {"range": rowcol_to_a1(FETCH_TIME_ROW, col), "format": TOTAL_AMOUNT_FORMAT},
             {"range": rowcol_to_a1(TOTAL_AMOUNT_ROW, col), "format": TOTAL_AMOUNT_FORMAT},
+            {
+                "range": rowcol_to_a1(OPERATING_TOTAL_ROW, col),
+                "format": TOTAL_AMOUNT_FORMAT,
+            },
         ]
     )
 
@@ -168,7 +175,7 @@ class SalesSheet:
         if target_date == datetime.now(JST).date():
             requests.append({
                 "range": rowcol_to_a1(FETCH_TIME_ROW, self._start_column - 1),
-                "values": [[f"取得 {_fetch_time_label()}"]],
+                "values": [[_fetch_time_label()]],
             })
 
         self._worksheet.batch_update(requests, value_input_option="RAW")
@@ -496,7 +503,7 @@ class SalesSheet:
         name_letter = _column_letter(name_column)
         requests = [
             {
-                "range": rowcol_to_a1(FETCH_TIME_ROW, column),
+                "range": rowcol_to_a1(OPERATING_TOTAL_ROW, column),
                 "values": [[_operating_profit_total_formula(name_letter, column)]],
             }
             for column in columns

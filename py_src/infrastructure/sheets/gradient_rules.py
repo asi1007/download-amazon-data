@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from statistics import median
+from typing import Callable
+
 from gspread import Worksheet
+from gspread.utils import ValueRenderOption, rowcol_to_a1
 
 from py_src.infrastructure.sheets.label_rows import (
     AD_ROW_LABEL,
@@ -34,11 +38,64 @@ NEGATIVE_PROFIT_FORMAT = {
 }
 
 
-def _gradient(minimum: dict, maximum: dict) -> dict:
+# 中央値は直近この日数から取る。暦の1ヶ月だと月初に数日ぶんしか残らず、
+# その数日の出来不出来で白の位置が飛ぶ
+RECENT_DAYS = 30
+FIRST_VALUE_ROW = HEADER_ROW + 1
+
+
+def _number(value: float) -> str:
+    # 中央値は偶数日だと .5 になる。9.0 は "9"、9.5 は "9.5" にする
+    return f"{value:g}"
+
+
+def _gradient_around_median(minimum: dict, maximum: dict, center: float) -> dict:
+    # その商品にとって普通の日を白にする。MIN〜MAX の2点だと、ふだんより
+    # 売れた日なのか売れなかった日なのかが色から読めない
+    if center <= 0:
+        # 中央値が0のとき midpoint に0を置くと minpoint とぶつかって赤が出ない。
+        # 売れなかった日を白、売れた日だけを青にする
+        return {
+            "minpoint": {"color": WHITE, "type": "NUMBER", "value": "0"},
+            "maxpoint": {"color": maximum, "type": "MAX"},
+        }
     return {
         "minpoint": {"color": minimum, "type": "MIN"},
+        "midpoint": {"color": WHITE, "type": "NUMBER", "value": _number(center)},
         "maxpoint": {"color": maximum, "type": "MAX"},
     }
+
+
+def recent_columns(date_columns: dict[int, int], recent_days: int = RECENT_DAYS) -> list[int]:
+    if not date_columns:
+        return []
+    latest = max(date_columns)
+    return sorted(
+        column
+        for serial, column in date_columns.items()
+        if latest - serial < recent_days
+    )
+
+
+def median_of_row(
+    grid: list[list], first_column: int, row: int, columns: list[int]
+) -> float:
+    # 空セルは「まだ取っていない日」なので母数から外す。0 は「売れなかった日」
+    # で、外すと中央値が実態より高く出る。bool は int の派生なので除く
+    index = row - FIRST_VALUE_ROW
+    if index < 0 or index >= len(grid):
+        return 0.0
+    line = grid[index]
+    values = []
+    for column in columns:
+        offset = column - first_column
+        if offset < 0 or offset >= len(line):
+            continue
+        value = line[offset]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        values.append(float(value))
+    return median(values) if values else 0.0
 
 
 def _gradient_from_zero(maximum: dict) -> dict:
@@ -94,7 +151,8 @@ class GradientRules:
 
     @retry_on_transient_error
     def apply(self) -> int:
-        columns = sorted(read_date_columns(self._worksheet).values())
+        date_columns = read_date_columns(self._worksheet)
+        columns = sorted(date_columns.values())
         if not columns:
             return 0
         first, last = columns[0], columns[-1]
@@ -102,9 +160,12 @@ class GradientRules:
         name_column = find_column(headers, PRODUCT_NAME_HEADER)
         asin_values = self._worksheet.col_values(ASIN_COLUMN)
         name_values = self._worksheet.col_values(name_column)
+        median_for = self._median_reader(recent_columns(date_columns))
         sheet_id = self._worksheet.id
 
-        rules = self._build_rules(sheet_id, asin_values, name_values, first, last)
+        rules = self._build_rules(
+            sheet_id, asin_values, name_values, first, last, median_for
+        )
         rules += self._column_rules(sheet_id)
         requests = self._delete_existing(first, last) + [
             {"addConditionalFormatRule": {"rule": rule, "index": index}}
@@ -113,6 +174,19 @@ class GradientRules:
         self._worksheet.spreadsheet.batch_update({"requests": requests})
         return len(rules)
 
+    def _median_reader(self, columns: list[int]) -> Callable[[int], float]:
+        # 中央値は行ごとに要るが、1行ずつ読むと商品数ぶんのリクエストになる。
+        # 直近ぶんの矩形を1回で取り、そこから引く
+        if not columns:
+            return lambda row: 0.0
+        first_column = columns[0]
+        grid = self._worksheet.get_values(
+            f"{rowcol_to_a1(FIRST_VALUE_ROW, first_column)}"
+            f":{rowcol_to_a1(self._worksheet.row_count, columns[-1])}",
+            value_render_option=ValueRenderOption.unformatted,
+        )
+        return lambda row: median_of_row(grid, first_column, row, columns)
+
     def _build_rules(
         self,
         sheet_id: int,
@@ -120,6 +194,7 @@ class GradientRules:
         name_values: list[str],
         first: int,
         last: int,
+        median_for: Callable[[int], float],
     ) -> list[dict]:
         # ブロックの起点は先頭ラベルから取る。「広告経由の1つ上が ASIN 行」と
         # 決め打つと、ラベルを並べ替えたときに別の行を掴む
@@ -136,15 +211,17 @@ class GradientRules:
                 asin_row = first_label - 1
                 if asin_row <= HEADER_ROW:
                     continue
-                # 売上個数（ASIN行）と広告経由の個数を1つのスケールに載せる。
-                # 商品ごとに独立させないと、販売数の多い商品以外が同じ色になる
-                rules.append({
-                    "ranges": [
-                        _grid_range(sheet_id, asin_row, first, last),
-                        _grid_range(sheet_id, first_label + ad_offset, first, last),
-                    ],
-                    "gradientRule": _gradient(PALE_RED, PALE_BLUE),
-                })
+                # 売上個数（ASIN行）と広告経由は別のスケールに載せる。広告経由は
+                # 総売上より必ず小さいので、総売上の中央値を白にすると広告経由行が
+                # まるごと赤に沈む。商品ごとに独立させるのは、1つのスケールに
+                # 載せると販売数の多い商品以外が同じ色になるため
+                for row in (asin_row, first_label + ad_offset):
+                    rules.append({
+                        "ranges": [_grid_range(sheet_id, row, first, last)],
+                        "gradientRule": _gradient_around_median(
+                            PALE_RED, PALE_BLUE, median_for(row)
+                        ),
+                    })
                 # 営業利益も個数と同じく商品ごとのスケールにする。商品ごとに
                 # 桁が違うため、1つのスケールに載せると規模の小さい商品が
                 # すべて白に潰れる

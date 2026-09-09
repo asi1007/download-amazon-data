@@ -13,15 +13,39 @@ from py_src.infrastructure.sheets.gradient_rules import (
 from py_src.infrastructure.sheets.label_rows import ROW_LABELS_IN_ORDER
 
 
-def _worksheet(existing_rules: int = 0) -> Mock:
+# 行5 = B00EXAMPLE の売上個数、行7 = その広告経由、行10/12 が2商品目。
+# 日付列は2列なので、中央値は2つの値の平均になる
+COUNT_VALUES: dict = {
+    5: [10, 4],
+    7: [4, 2],
+    11: [20, 8],
+    13: [6, 4],
+}
+FIRST_VALUE_ROW = 5
+LAST_VALUE_ROW = 16
+
+
+def _grid(values: dict) -> list:
+    return [values.get(row, []) for row in range(FIRST_VALUE_ROW, LAST_VALUE_ROW + 1)]
+
+
+def _worksheet(
+    existing_rules: int = 0,
+    date_header: tuple = (46269, 46268),
+    values: dict = None,
+    keys: list = None,
+) -> Mock:
     worksheet = Mock(spec=Worksheet)
     worksheet.id = 0
     worksheet.row_count = 400
     worksheet.row_values.side_effect = lambda row, **kwargs: (
-        ["ASIN_SELL", "", "", "", "PROFIT_RATE"] if row == 1
-        else ["ASIN", "商品名", 46269, 46268]
+        (["ASIN_SELL", "", "", "", "PROFIT_RATE"] if keys is None else keys) if row == 1
+        else ["ASIN", "商品名", *date_header]
     )
-    col_a = ["", "", "", "ASIN", "B00EXAMPLE", "", "", "", "", "B00EXAMPLF", "", "", "", ""]
+    worksheet.get_values.side_effect = lambda *args, **kwargs: _grid(
+        COUNT_VALUES if values is None else values
+    )
+    col_a = ["", "", "", "ASIN", "B00EXAMPLE"] + [""] * 5 + ["B00EXAMPLF"] + [""] * 5
     labels = list(ROW_LABELS_IN_ORDER)
     col_name = ["", "", "", "商品名", "ルーペ"] + labels + ["ボール"] + labels
     worksheet.col_values.side_effect = lambda col, **kwargs: col_a if col == 1 else col_name
@@ -33,9 +57,11 @@ def _worksheet(existing_rules: int = 0) -> Mock:
 
 
 def _operating_rules(worksheet: Mock) -> list[dict]:
+    # 行の種類は色の濃さで見分ける。minpoint の type では、中央値0の個数行が
+    # 営業利益と同じ NUMBER になるため区別できない
     return [r for r in _rules(worksheet)
             if "gradientRule" in r and r["ranges"][0].get("endRowIndex") != 400
-            and r["gradientRule"]["minpoint"].get("type") == "NUMBER"]
+            and r["gradientRule"]["maxpoint"]["color"] == DEEP_BLUE]
 
 
 def _operating_gradient(worksheet: Mock) -> dict:
@@ -44,8 +70,13 @@ def _operating_gradient(worksheet: Mock) -> dict:
 
 def _count_rules(worksheet: Mock) -> list[dict]:
     return [r for r in _rules(worksheet)
-            if "gradientRule" in r and r["gradientRule"]["minpoint"].get("type") == "MIN"
-            and r["ranges"][0].get("endRowIndex") != 400]
+            if "gradientRule" in r
+            and r["gradientRule"]["maxpoint"]["color"] == PALE_BLUE]
+
+
+def _count_rule_at(worksheet: Mock, row: int) -> dict:
+    return next(r for r in _count_rules(worksheet)
+                if r["ranges"][0]["startRowIndex"] == row - 1)
 
 
 def _rules(worksheet: Mock) -> list[dict]:
@@ -55,33 +86,37 @@ def _rules(worksheet: Mock) -> list[dict]:
 
 
 class TestGradientRules:
-    def test_one_rule_per_product_for_the_count_rows(self) -> None:
+    def test_one_rule_per_row_for_the_count_rows(self) -> None:
         # 個数は商品ごとに桁が違う。1つのスケールに載せると、販売数の多い商品
         # 以外がすべて同じ色になる
         worksheet = _worksheet()
 
-        # 商品2件 × (個数1本 + 営業利益1本) + 赤字の判定1本 + 利益率の列1本
-        assert GradientRules(worksheet).apply() == 6
+        # 商品2件 × (個数1本 + 広告経由1本 + 営業利益1本 + 順位1本)
+        # + 赤字の判定1本 + 利益率の列1本
+        assert GradientRules(worksheet).apply() == 10
         count_rules = _count_rules(worksheet)
-        assert len(count_rules) == 2
-        assert all(len(r["ranges"]) == 2 for r in count_rules)
+        assert len(count_rules) == 4
+        assert all(len(r["ranges"]) == 1 for r in count_rules)
 
-    def test_count_rule_covers_the_asin_row_and_the_ad_row_together(self) -> None:
+    def test_the_asin_row_and_the_ad_row_get_separate_rules(self) -> None:
+        # 広告経由は総売上より必ず小さい。同じスケールに載せると、総売上の
+        # 中央値を白にしたときに広告経由行がまるごと赤に沈む
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
-        ranges = _count_rules(worksheet)[0]["ranges"]
-        # ASIN行（0起点で4）と広告経由行。並べ替え後は隣り合っていない
-        assert [r["startRowIndex"] for r in ranges] == [4, 6]
-        assert ranges[0]["startColumnIndex"] == 2
-        assert ranges[0]["endColumnIndex"] == 4
+        rows = sorted(r["ranges"][0]["startRowIndex"] for r in _count_rules(worksheet))
+        # 0起点。ASIN行（行5・行10）と広告経由行（行7・行12）
+        assert rows == [4, 6, 10, 12]
+        first = _count_rule_at(worksheet, 5)["ranges"][0]
+        assert first["startColumnIndex"] == 2
+        assert first["endColumnIndex"] == 4
 
     def test_counts_go_red_to_blue_in_a_pale_tone(self) -> None:
         # 悪い = 赤、良い = 青で全行そろえ、行の種類は色味の濃さで見分ける
         worksheet = _worksheet()
         GradientRules(worksheet).apply()
 
-        gradient = _count_rules(worksheet)[0]["gradientRule"]
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
         assert gradient["minpoint"] == {"color": PALE_RED, "type": "MIN"}
         assert gradient["maxpoint"] == {"color": PALE_BLUE, "type": "MAX"}
 
@@ -103,7 +138,7 @@ class TestGradientRules:
         GradientRules(worksheet).apply()
 
         operating = _operating_rules(worksheet)
-        assert [r["ranges"][0]["startRowIndex"] for r in operating] == [5, 10]
+        assert [r["ranges"][0]["startRowIndex"] for r in operating] == [5, 11]
         assert all(len(r["ranges"]) == 1 for r in operating)
 
     def test_only_own_rules_are_deleted(self) -> None:
@@ -224,4 +259,96 @@ class TestNegativeOperatingProfit:
 
         rules = _rules(worksheet)
         critical = next(r for r in rules if "booleanRule" in r)
-        assert [r["startRowIndex"] for r in critical["ranges"]] == [5, 10]
+        assert [r["startRowIndex"] for r in critical["ranges"]] == [5, 11]
+
+
+class TestCountMedian:
+    def test_the_recent_median_is_pinned_to_white(self) -> None:
+        # MIN〜MAX の2点だと「その商品にとって普通の日」が色から読めない。
+        # ふだんより売れた日が青、売れなかった日が赤になるようにする
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["midpoint"] == {"color": WHITE, "type": "NUMBER", "value": "7"}
+
+    def test_the_ad_row_uses_its_own_median(self) -> None:
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 7)["gradientRule"]
+        assert gradient["midpoint"] == {"color": WHITE, "type": "NUMBER", "value": "3"}
+
+    def test_a_half_median_keeps_its_decimal(self) -> None:
+        worksheet = _worksheet(values={5: [10, 3]})
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["midpoint"]["value"] == "6.5"
+
+    def test_a_zero_median_pins_white_to_zero_instead(self) -> None:
+        # 中央値が0だと minpoint とぶつかって赤が出ない。売れなかった日を白、
+        # 売れた日だけを青にする
+        worksheet = _worksheet(values={5: [0, 0]})
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "0"}
+        assert gradient["maxpoint"] == {"color": PALE_BLUE, "type": "MAX"}
+        assert "midpoint" not in gradient
+
+    def test_days_older_than_the_window_are_ignored(self) -> None:
+        # 3列目は46269から30日以上前。含めると中央値が実態から外れる
+        worksheet = _worksheet(
+            date_header=(46269, 46268, 46200),
+            values={5: [10, 4, 900]},
+            keys=["ASIN_SELL"],
+        )
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["midpoint"]["value"] == "7"
+
+    def test_blank_days_are_excluded_but_zero_days_count(self) -> None:
+        # 空セルは「まだ取っていない日」。0 は「売れなかった日」で、母数から
+        # 外すと中央値が実態より高く出る
+        worksheet = _worksheet(date_header=(46269, 46268, 46267), values={5: [8, 0, ""]},
+                               keys=["ASIN_SELL"])
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["midpoint"]["value"] == "4"
+
+    def test_a_row_without_any_value_falls_back_to_zero(self) -> None:
+        worksheet = _worksheet(values={})
+        GradientRules(worksheet).apply()
+
+        gradient = _count_rule_at(worksheet, 5)["gradientRule"]
+        assert gradient["minpoint"] == {"color": WHITE, "type": "NUMBER", "value": "0"}
+
+
+def _rank_rules(worksheet: Mock) -> list[dict]:
+    return [
+        r for r in _rules(worksheet)
+        if "gradientRule" in r
+        and r["gradientRule"]["minpoint"].get("color") == PALE_BLUE
+    ]
+
+
+class TestRankGradient:
+    def test_rank_is_blue_at_the_top_and_red_at_the_bottom(self) -> None:
+        # 順位は小さいほど良い。個数（多いほど良い）と向きが逆になる
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        gradient = _rank_rules(worksheet)[0]["gradientRule"]
+        assert gradient["minpoint"] == {"color": PALE_BLUE, "type": "MIN"}
+        assert gradient["maxpoint"] == {"color": PALE_RED, "type": "MAX"}
+
+    def test_rank_rule_is_separate_per_product(self) -> None:
+        worksheet = _worksheet()
+        GradientRules(worksheet).apply()
+
+        rank_rules = _rank_rules(worksheet)
+        assert [r["ranges"][0]["startRowIndex"] for r in rank_rules] == [9, 15]
+        assert all(len(r["ranges"]) == 1 for r in rank_rules)

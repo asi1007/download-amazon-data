@@ -1,4 +1,5 @@
 import os
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -6,6 +7,7 @@ import gspread
 
 from py_src.domain.value_objects.gross_profit_write_result import GrossProfitWriteResult
 from py_src.infrastructure.api.sp_api_authenticator import SpApiAuthenticator
+from py_src.infrastructure.api.sp_api_catalog import SpApiCatalog
 from py_src.infrastructure.api.sp_api_sales_repository import SpApiSalesRepository
 from py_src.infrastructure.api.sp_api_price_repository import SpApiPriceRepository
 from py_src.infrastructure.api.sp_api_inventory_repository import SpApiInventoryRepository
@@ -22,7 +24,10 @@ from py_src.infrastructure.sheets.ad_sales_sheet import AdSalesSheet
 from py_src.infrastructure.sheets.unit_cost_reader import UnitCostReader
 from py_src.infrastructure.sheets.product_index_reader import ProductIndexReader
 from py_src.infrastructure.sheets.fee_gap_sheet import FeeGapSheet
+from py_src.infrastructure.sheets.rank_sheet import RankSheet
+from py_src.infrastructure.sheets.gradient_rules import GradientRules
 from py_src.infrastructure.sheets.retry import retry_on_transient_error
+from py_src.infrastructure.sheets.row_groups import RowGroups
 from py_src.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 from py_src.usecases.update_realtime_sales import UpdateRealtimeSalesUseCase
 from py_src.usecases.update_daily_sales import UpdateDailySalesUseCase
@@ -31,8 +36,12 @@ from py_src.usecases.update_weekly_sales import UpdateWeeklySalesUseCase
 from py_src.usecases.update_inventory_status import UpdateInventoryStatusUseCase
 from py_src.usecases.update_ad_sales import UpdateAdSalesUseCase
 from py_src.usecases.update_actual_gross_profit import UpdateActualGrossProfitUseCase
+from py_src.usecases.update_category_ranks import UpdateCategoryRanksUseCase
 
 ADS_ENV_PATH = Path(__file__).resolve().parents[1] / "dwld-ad-data" / ".env"
+
+
+JST = timezone(timedelta(hours=9))
 
 
 def main() -> None:
@@ -86,6 +95,12 @@ def update_daily_sales() -> None:
         cost_reader=cost_reader,
     )
     _print_gross_profit_result(usecase.execute())
+    # 個数の色は直近1ヶ月の中央値を白に置く。中央値は日々動くので、書いた
+    # あとに掛け直さないと実行した日の中央値のまま古びる
+    print(f"条件付き書式を {GradientRules(sales_ws).apply()} 件設定しました")
+    # 人が中を見るために開いた行を閉じ直す。グループを作り直さないのは、
+    # 新商品のグループ作成が漏れていたときにそれを隠さないため
+    print(f"開いていた行グループを {RowGroups(sales_ws).collapse_expanded()} 件閉じました")
 
 
 def update_today_sales() -> None:
@@ -205,6 +220,37 @@ def update_ad_sales() -> None:
         )
 
 
+def update_category_ranks() -> None:
+    load_dotenv()
+    day = _rank_target_date()
+    authenticator = _create_authenticator()
+    authenticator.authenticate()
+    spreadsheet = _open_spreadsheet()
+    usecase = UpdateCategoryRanksUseCase(
+        sheet=RankSheet(worksheet=spreadsheet.worksheet("売上/日")),
+        catalog=SpApiCatalog(authenticator=authenticator),
+    )
+    result = usecase.execute(day)
+    print(f"{day} のカテゴリ順位を {result.cells_written} セル書き込みました")
+    if result.label_updates:
+        print(f"カテゴリ名を {result.label_updates} 行に入れました")
+    if result.skipped_date:
+        print(f"{day} の日付列が売上/日 に無いためスキップしました")
+    if result.missing_rows:
+        print(
+            f"順位行が無い ASIN（{len(result.missing_rows)}件）: "
+            f"{', '.join(result.missing_rows)}"
+        )
+
+
+def _rank_target_date() -> date:
+    import sys
+
+    if "--date" in sys.argv:
+        return date.fromisoformat(sys.argv[sys.argv.index("--date") + 1])
+    return datetime.now(JST).date()
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "daily":
@@ -219,5 +265,7 @@ if __name__ == "__main__":
         update_ad_sales()
     elif len(sys.argv) > 1 and sys.argv[1] == "finances":
         update_actual_gross_profit()
+    elif len(sys.argv) > 1 and sys.argv[1] == "ranks":
+        update_category_ranks()
     else:
         main()
