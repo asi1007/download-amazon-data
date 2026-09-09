@@ -31,7 +31,7 @@
 | 2 | `広告経由` | 広告経由の売上個数 | `main.py ads` | たたむ |
 | 3 | `粗利益` | 見積または実測 | `daily` / `today` / `finances` | たたむ |
 | 4 | `広告費` | その日の広告費 | `main.py ads` | たたむ |
-| 5 | `順位（カテゴリ名）` | カテゴリ内の順位 | `category-rank` | たたむ |
+| 5 | `順位（カテゴリ名）` | カテゴリ内の順位 | `main.py ranks` | たたむ |
 
 ## ラベル判定を前方一致に拡張する
 
@@ -40,7 +40,7 @@
 
 - 順位行だけ「`順位` で始まる行」という前方一致で判定する
 - 他の4本は完全一致のまま変えない
-- カテゴリが未判明のうちは `順位` だけを置く。順位が付いた時点で `category-rank` が
+- カテゴリが未判明のうちは `順位` だけを置く。順位が付いた時点で `main.py ranks` が
   `順位（カテゴリ名）` へ書き換える
 
 **カテゴリ名の引き継ぎ元がラベル名になる。** 現行はカテゴリランキングシートの D列から
@@ -63,14 +63,22 @@
 - `sales_sheet_row.py` — `LABEL_ROWS_IN_ORDER` に `順位` を追加。新商品は6行で挿入される
 
 **ラベルの順序と本数の一致が必要なのは、従来どおりこの2リポジトリだけ。**
-`category-rank` は行を挿入せず「順位で始まる行」を探して書くだけなので、並び順に依存しない。
-一致を保証すべき箇所を増やさない。
 
-### `marketar/category-rank`
+### `marketar/category-rank` は `download-amazon-data` へ統合する（2026-09-09 変更）
 
-- 書き込み先を売上/日 の順位行へ変更する
+当初は書き込み先だけを変えて別プロジェクトのまま残す設計だったが、**同じシートの
+同じ行を扱う処理を2箇所に分けても得るものが無い**ため統合する。`category-rank` は
+一度もコミットされておらず（marketar から見て未追跡）、履歴を失う心配も無い。
+
+- `main.py ranks` サブコマンドにする（`daily` / `ads` / `finances` と並ぶ）
+- `label_rows.py` を import できるので、**ラベル判定を再実装しなくてよい**。
+  規約を一致させねばならない箇所が増えない
+- SP-API の認証は既存の `SpApiAuthenticator` を使う（`category-rank` は独自実装だった）
 - カテゴリ名の引き継ぎ元をラベル名にする
 - 売上/日 に無い ASIN は対象外（旧シートの「消えた ASIN も末尾に残す」は無くなる）
+- `marketar/category-rank/` は削除する
+- launchd の `com.automation.category-rank.plist` は `WorkingDirectory` を
+  `download-amazon-data` に変え、`main.py ranks` を呼ぶ形に直す
 
 ## 日付列は作らない
 
@@ -90,7 +98,7 @@
 2. `insert_label_rows.py` を実行し、既存74商品へ6本目を挿入する
 3. `listing-creator` の `LABEL_ROWS_IN_ORDER` に `順位` を足す（以降の新商品が6行で入る）
 4. `apply_row_groups.py` / `apply_row_heights.py` / `apply_gradients.py` を流し直す
-5. `category-rank` の書き込み先を売上/日 へ変える
+5. `category-rank` を `main.py ranks` として統合し、書き込み先を売上/日 へ変える
 6. 履歴を移行し、旧シートを削除する
 
 1〜3 の間に新商品が登録されると順位行が無いブロックができるが、`insert_label_rows.py` は
@@ -99,7 +107,7 @@
 ## 移行
 
 1. 旧シートの履歴を売上/日 の該当日付列へ書き写す1回限りのスクリプトを
-   `marketar/category-rank/migrate_to_sales_sheet.py` として作る（`--dry-run` を持たせる）
+   `download-amazon-data/migrate_category_ranks.py` として作る（`--dry-run` を持たせる）
 2. `--dry-run` で件数と対象日を確認してから実行する
 3. 旧シート（カテゴリランキング）を削除する
 
@@ -127,4 +135,4 @@
 
 - 売上/日 に列が無い日付の履歴移行（列を作ってまで遡らない）
 - 売上/日 から消えた ASIN の順位履歴の保持
-- `category-rank` プロジェクトの統合（書き込み先だけを変える）
+- 旧シートにあった画像列・商品名列の再現（売上/日 に既にある）
