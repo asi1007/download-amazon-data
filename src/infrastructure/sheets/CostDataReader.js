@@ -2,7 +2,9 @@ class CostDataReader {
   constructor() {
     const SHEET_NAME = '売上/日';
     this.sheet = getSheetByName(SHEET_NAME);
-    this.HEADER_ROW = 4;
+    // 売上/日 の行構成は shared/sales-data の layout.py が正本。
+    // Python を使えないので値を合わせる（利益率行の追加で 4 → 5）
+    this.HEADER_ROW = 5;
 
     this.COLUMNS = {
       ASIN: 1,

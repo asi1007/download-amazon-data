@@ -3,7 +3,9 @@ function updatePrice() {
   const row = sheet.getActiveCell().getRow();
   console.log(row);
 
-  const HEADER_ROW = 4;
+  // 売上/日 の行構成は shared/sales-data の layout.py が正本。
+  // Python を使えないので値を合わせる（利益率行の追加で 4 → 5）
+  const HEADER_ROW = 5;
   const headers = sheet.getRange(HEADER_ROW, 1, 1, sheet.getLastColumn()).getValues()[0];
   const findColumn = (name) => {
     const index = headers.indexOf(name);
