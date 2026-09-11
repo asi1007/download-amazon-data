@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
+from amazon_api import spapi_credentials
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -24,10 +25,11 @@ SKU_HEADER = "SKU"
 
 
 def _create_authenticator() -> SpApiAuthenticator:
+    credentials = spapi_credentials()
     authenticator = SpApiAuthenticator(
-        client_id=os.getenv("API_KEY", ""),
-        client_secret=os.getenv("API_SECRET", ""),
-        refresh_token=os.getenv("REFRESH_TOKEN", ""),
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        refresh_token=credentials.refresh_token,
     )
     authenticator.authenticate()
     return authenticator

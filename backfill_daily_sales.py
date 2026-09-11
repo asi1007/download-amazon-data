@@ -4,6 +4,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 import gspread
+from amazon_api import spapi_credentials
 from dotenv import load_dotenv
 
 from py_src.domain.repositories.sales_repository import SalesRepository
@@ -27,10 +28,11 @@ def main() -> None:
         sys.exit(1)
 
     load_dotenv()
+    credentials = spapi_credentials()
     authenticator = SpApiAuthenticator(
-        client_id=os.getenv("API_KEY", ""),
-        client_secret=os.getenv("API_SECRET", ""),
-        refresh_token=os.getenv("REFRESH_TOKEN", ""),
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        refresh_token=credentials.refresh_token,
     )
     authenticator.authenticate()
     sales_repository = SpApiSalesRepository(authenticator=authenticator)
