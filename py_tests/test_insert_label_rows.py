@@ -1,5 +1,8 @@
 from insert_label_rows import (
+    BLACK,
+    build_format_requests,
     build_insert_requests,
+    find_label_rows,
     label_row_numbers,
     plan_label_insertions,
 )
@@ -102,3 +105,51 @@ class TestRankRowIsNotDuplicated:
         ])
 
         assert plan_label_insertions(asin, name) == [(10, ["順位"])]
+
+
+class TestLabelRowFormat:
+    def test_label_rows_get_black_text_over_the_grey_background(self) -> None:
+        # 挿入した行は直前の商品行から文字色を受け継ぐ。黄色を付けた商品ブロックでは
+        # うすい灰色の背景に黄色の文字が乗って読めなくなる
+        requests = build_format_requests(551300985, 7, [(10, "順位")])
+
+        cell = requests[0]["repeatCell"]["cell"]["userEnteredFormat"]
+        assert cell["textFormat"]["foregroundColor"] == BLACK
+        assert cell["textFormat"]["foregroundColorStyle"] == {"rgbColor": BLACK}
+        assert cell["backgroundColor"] == {"red": 0.95, "green": 0.95, "blue": 0.95}
+
+    def test_format_fields_cover_both_the_background_and_the_text_colour(self) -> None:
+        # foregroundColorStyle を書かないと、既にスタイル側で黄色が指定されている
+        # セルはそちらが勝って黄色のまま残る
+        fields = build_format_requests(551300985, 7, [(10, "順位")])[0]["repeatCell"]["fields"]
+
+        assert "userEnteredFormat.backgroundColor" in fields
+        assert "userEnteredFormat.textFormat.foregroundColor" in fields
+        assert "userEnteredFormat.textFormat.foregroundColorStyle" in fields
+
+
+class TestFindLabelRows:
+    def test_finds_every_label_row_including_the_rank_row_with_a_category(self) -> None:
+        asin, name = _sheet([
+            ("B00EXAMPLE", "ルーペ"),
+            ("", "営業利益"),
+            ("", "広告経由"),
+            ("", "粗利益"),
+            ("", "広告費"),
+            ("", "順位（ジュエリー収納）"),
+        ])
+
+        assert find_label_rows(asin, name) == [
+            (6, "営業利益"), (7, "広告経由"), (8, "粗利益"), (9, "広告費"),
+            (10, "順位（ジュエリー収納）"),
+        ]
+
+    def test_product_rows_and_free_notes_are_not_label_rows(self) -> None:
+        # A列に手書きのメモが入るだけの行がある。ラベル行と混ぜると塗ってしまう
+        asin, name = _sheet([
+            ("B00EXAMPLE", "ルーペ"),
+            ("", "営業利益"),
+            ("やめる", ""),
+        ])
+
+        assert find_label_rows(asin, name) == [(6, "営業利益")]

@@ -20,7 +20,20 @@ from sales_data.infrastructure.sheets.row_heights import RowHeights
 from sales_data.infrastructure.sheets.spreadsheet_client import open_spreadsheet
 
 SHEET_NAME = "売上/日"
-LABEL_ROW_BACKGROUND = {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}
+BLACK = {"red": 0.0, "green": 0.0, "blue": 0.0}
+# 挿入した行は直前の商品行から文字色を受け継ぐ。手で黄色を付けた商品ブロックでは
+# うすい灰色の背景に黄色の文字が乗って読めなくなるので、文字色も黒で固定する。
+# foregroundColorStyle まで書くのは、スタイル側の指定が残っていると
+# そちらが勝って黄色のままになるため
+LABEL_ROW_FORMAT = {
+    "backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95},
+    "textFormat": {"foregroundColor": BLACK, "foregroundColorStyle": {"rgbColor": BLACK}},
+}
+LABEL_ROW_FORMAT_FIELDS = (
+    "userEnteredFormat.backgroundColor,"
+    "userEnteredFormat.textFormat.foregroundColor,"
+    "userEnteredFormat.textFormat.foregroundColorStyle"
+)
 
 
 def plan_label_insertions(
@@ -111,7 +124,23 @@ def build_label_requests(
     ]
 
 
-def build_background_requests(
+def find_label_rows(
+    asin_values: list[str], name_values: list[str]
+) -> list[tuple[int, str]]:
+    # 既に入っているラベル行を洗い出す。A列に手書きのメモだけが入る行があるので、
+    # 商品名列がラベルと一致することを条件にする
+    rows: list[tuple[int, str]] = []
+    for index, value in enumerate(name_values):
+        asin = asin_values[index].strip() if index < len(asin_values) else ""
+        if len(asin) == ASIN_LENGTH:
+            continue
+        name = value.strip()
+        if any(matches_label(name, label) for label in ROW_LABELS_IN_ORDER):
+            rows.append((index + 1, name))
+    return rows
+
+
+def build_format_requests(
     sheet_id: int, name_column: int, labeled_rows: list[tuple[int, str]]
 ) -> list[dict]:
     return [
@@ -124,8 +153,8 @@ def build_background_requests(
                     "startColumnIndex": 0,
                     "endColumnIndex": name_column,
                 },
-                "cell": {"userEnteredFormat": LABEL_ROW_BACKGROUND},
-                "fields": "userEnteredFormat.backgroundColor",
+                "cell": {"userEnteredFormat": LABEL_ROW_FORMAT},
+                "fields": LABEL_ROW_FORMAT_FIELDS,
             }
         }
         for row, _ in labeled_rows
@@ -156,10 +185,28 @@ def _apply_label_row_plan(worksheet: gspread.Worksheet, name_column: int) -> lis
     requests = (
         build_insert_requests(worksheet.id, plan)
         + build_label_requests(worksheet.id, name_column, labeled_rows)
-        + build_background_requests(worksheet.id, name_column, labeled_rows)
+        + build_format_requests(worksheet.id, name_column, labeled_rows)
     )
     worksheet.spreadsheet.batch_update({"requests": requests})
     return labeled_rows
+
+
+# 塗り直しは既存のラベル行ぜんぶが対象になるので数百リクエストになる。
+# 1回のペイロードが膨らんで 400 が返らないよう分割して送る
+REPAINT_CHUNK_SIZE = 200
+
+
+@retry_on_transient_error
+def _repaint_label_rows(worksheet: gspread.Worksheet, name_column: int) -> int:
+    asin_values = worksheet.col_values(ASIN_COLUMN)
+    name_values = worksheet.col_values(name_column)
+    label_rows = find_label_rows(asin_values, name_values)
+    requests = build_format_requests(worksheet.id, name_column, label_rows)
+    for start in range(0, len(requests), REPAINT_CHUNK_SIZE):
+        worksheet.spreadsheet.batch_update(
+            {"requests": requests[start:start + REPAINT_CHUNK_SIZE]}
+        )
+    return len(label_rows)
 
 
 def main() -> None:
@@ -169,6 +216,14 @@ def main() -> None:
     name_column = find_column(headers, PRODUCT_NAME_HEADER)
     asin_values = worksheet.col_values(ASIN_COLUMN)
     name_values = worksheet.col_values(name_column)
+
+    if "--repaint" in sys.argv:
+        label_rows = find_label_rows(asin_values, name_values)
+        print(f"塗り直すラベル行: {len(label_rows)} 行")
+        if dry_run:
+            return
+        print(f"ラベル行 {_repaint_label_rows(worksheet, name_column)} 行を塗り直しました")
+        return
 
     plan = plan_label_insertions(asin_values, name_values)
     total_missing = sum(len(labels) for _, labels in plan)
